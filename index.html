@@ -10,9 +10,17 @@
   .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; }
   .tab.active { background:#333; color:#fff; }
   .item { border:1px solid #ddd; padding:6px; margin:4px 0; font-size:12px; }
-  #debugOutput { white-space: pre-wrap; font-size:12px; background:#eef; padding:8px; margin-top:10px; }
-  #debugHeader { cursor:pointer; user-select:none; }
+
+  #debugOutput { 
+    white-space: pre-wrap; 
+    font-size:12px; 
+    background:#eef; 
+    padding:8px; 
+    margin-top:10px; 
+    user-select:none; /* コピー禁止 */
+  }
   #debugOutput[hidden] { display:none; }
+  #debugHeader { cursor:pointer; user-select:none; }
 </style>
 </head>
 <body>
@@ -110,9 +118,9 @@ function highlightJson(rawText) {
   const after = rawText.slice(rawText.indexOf(jsonPart) + jsonPart.length);
 
   return before + "\n" +
-         "[JSON部分]\n" +
+         "【JSON部分】\n" +
          jsonPart + "\n" +
-         "[/JSON部分]\n" +
+         "【/JSON部分】\n" +
          after;
 }
 
@@ -136,7 +144,13 @@ function showDebug(rawText, forceOn = false) {
     alert("デバッグ内容のコピーは禁止しています");
   };
 
-  // 色分け（簡易：JSON部分をラベル付きで強調）
+  // 空の場合は理由を表示
+  if (!rawText || rawText.trim() === "") {
+    rawText = "[Gemini からの返答が空です]\n" +
+              "APIキーが無効、無料枠超過、またはネットワークエラーの可能性があります。";
+  }
+
+  // JSON部分を強調
   const text = highlightJson(rawText);
   box.textContent = text;
 
@@ -164,9 +178,30 @@ function extractJson(text) {
     return JSON.parse(jsonString);
   } catch (e) {
     console.error("extractJson error:", e, "raw text:", text);
-    // JSON抽出エラー時は自動でデバッグON
-    showDebug(text, true);
+    showDebug(text, true); // 自動でデバッグON
     throw new Error("JSON抽出エラー");
+  }
+}
+
+/* ============================
+   Gemini返答の raw を安全に取得
+============================ */
+function getRawTextFromGemini(json) {
+  try {
+    if (json.error) {
+      return "【Gemini API エラー】\n" + JSON.stringify(json.error, null, 2);
+    }
+
+    const parts = json.candidates?.[0]?.content?.parts;
+    if (!parts) return "";
+
+    let raw = "";
+    for (const p of parts) {
+      if (p.text) raw += p.text + "\n";
+    }
+    return raw.trim();
+  } catch {
+    return "";
   }
 }
 
@@ -258,9 +293,11 @@ async function analyzeImage(base64Image) {
   );
 
   const json = await res.json();
-  const raw = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-  // デバッグ表示（通常はチェックON時のみ）
+  // raw を安全に取得
+  const raw = getRawTextFromGemini(json);
+
+  // デバッグ表示
   showDebug(raw);
 
   return extractJson(raw);
