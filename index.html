@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>OCRキャプチャ（Gemini Flash）</title>
+<style>
+  body { font-family: sans-serif; padding: 10px; }
+  #preview { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; }
+  #result { white-space: pre-wrap; font-size: 12px; background:#f7f7f7; padding:8px; }
+  .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; }
+  .tab.active { background:#333; color:#fff; }
+  .item { border:1px solid #ddd; padding:6px; margin:4px 0; font-size:12px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+
+<h2>OCRキャプチャ（レシート／名刺／ナンバー）</h2>
+
+<!-- APIキー管理 -->
+<h3>APIキー設定</h3>
+<input id="apiKeyInput" type="password" placeholder="APIキーを入力">
+<button id="saveApiKeyBtn">保存</button>
+<button id="resetApiKeyBtn">再入力</button>
+<div id="apiKeyStatus"></div>
+
+<hr>
+
+<!-- 撮影 -->
+<input id="fileInput" type="file" accept="image/*" capture="environment"><br>
+<img id="preview">
+
+<button id="ocrBtn" disabled>OCR実行</button>
+
+<h3>解析結果</h3>
+<div id="result"></div>
+
+<hr>
+
+<!-- タブ -->
+<div>
+  <span class="tab active" data-tab="all">全件</span>
+  <span class="tab" data-tab="receipt">レシート</span>
+  <span class="tab" data-tab="business">名刺</span>
+  <span class="tab" data-tab="plate">ナンバー</span>
+</div>
+
+<h3>保存データ</h3>
+<div id="list"></div>
+
+<script>
+/* ============================
+   APIキー管理（暗号化保存）
+============================ */
+function encrypt(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function decrypt(str) {
+  return decodeURIComponent(escape(atob(str)));
+}
+
+function loadApiKey() {
+  const enc = localStorage.getItem("gemini_api_key");
+  return enc ? decrypt(enc) : null;
+}
+
+function saveApiKey(key) {
+  localStorage.setItem("gemini_api_key", encrypt(key));
+}
+
+function updateApiKeyStatus() {
+  const key = loadApiKey();
+  const status = document.getElementById("apiKeyStatus");
+  if (key) status.textContent = "APIキー：設定済み（非表示）";
+  else status.textContent = "APIキー：未設定";
+}
+
+document.getElementById("saveApiKeyBtn").onclick = () => {
+  const key = document.getElementById("apiKeyInput").value.trim();
+  if (!key) return alert("APIキーを入力してください");
+  saveApiKey(key);
+  document.getElementById("apiKeyInput").value = "";
+  updateApiKeyStatus();
+};
+
+document.getElementById("resetApiKeyBtn").onclick = () => {
+  localStorage.removeItem("gemini_api_key");
+  updateApiKeyStatus();
+};
+
+updateApiKeyStatus();
+
+/* ============================
+   OCRプロンプト
+============================ */
+const OCR_PROMPT = `
+あなたは高精度OCRエンジンとして動作します。
+以下の画像が「レシート」「名刺」「自動車ナンバープレート」「その他」のどれかを自動判別し、
+種類に応じて最適な項目を抽出し、JSON形式で返してください。
+
+【共通ルール】
+- 読み取れた文字は可能な限りそのまま抽出
+- 推測で補完しない（読めない部分は「不明」）
+- 出力は必ず JSON のみ
+
+【出力形式】
+{
+  "type": "receipt | business_card | license_plate | other",
+  "raw_text": "",
+  "receipt": { "store_name": "", "date": "", "total": "", "items": [] },
+  "business_card": { "name": "", "company": "", "phone": "", "email": "" },
+  "license_plate": { "region": "", "class_number": "", "hiragana": "", "number": "" }
+}
+`;
+
+/* ============================
+   画像リサイズ（1075px）
+============================ */
+const MAX_SIZE = 1075;
+let currentBase64 = null;
+
+document.getElementById("fileInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      currentBase64 = dataUrl.split(",")[1];
+
+      document.getElementById("preview").src = dataUrl;
+      document.getElementById("ocrBtn").disabled = false;
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ============================
+   Gemini Flash OCR
+============================ */
+async function analyzeImage(base64Image) {
+  const API_KEY = loadApiKey();
+  if (!API_KEY) {
+    alert("APIキーが設定されていません");
+    return;
+  }
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: OCR_PROMPT },
+          { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+        ]
+      }
+    ]
+  };
+
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + API_KEY,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }
+  );
+
+  const json = await res.json();
+  const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return JSON.parse(text);
+}
+
+/* ============================
+   OCR実行
+============================ */
+document.getElementById("ocrBtn").onclick = async () => {
+  if (!currentBase64) return;
+
+  const btn = document.getElementById("ocrBtn");
+  btn.disabled = true;
+  btn.textContent = "解析中…";
+
+  try {
+    const data = await analyzeImage(currentBase64);
+    document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+
+    saveRecord(data);
+    renderList();
+  } catch (e) {
+    console.error(e);
+    alert("解析に失敗しました");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "OCR実行";
+  }
+};
+
+/* ============================
+   保存（localStorage）
+============================ */
+function saveRecord(data) {
+  const key = "ocr_records";
+  const now = new Date().toISOString();
+  const records = JSON.parse(localStorage.getItem(key) || "[]");
+  records.unshift({ createdAt: now, data });
+  localStorage.setItem(key, JSON.stringify(records));
+}
+
+/* ============================
+   タブ切り替え
+============================ */
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    renderList();
+  };
+});
+
+/* ============================
+   一覧表示（タブ別）
+============================ */
+function renderList() {
+  const key = "ocr_records";
+  const records = JSON.parse(localStorage.getItem(key) || "[]");
+  const listDiv = document.getElementById("list");
+  listDiv.innerHTML = "";
+
+  const activeTab = document.querySelector(".tab.active").dataset.tab;
+
+  records.forEach((r, idx) => {
+    const t = r.data.type;
+
+    if (activeTab === "receipt" && t !== "receipt") return;
+    if (activeTab === "business" && t !== "business_card") return;
+    if (activeTab === "plate" && t !== "license_plate") return;
+
+    const div = document.createElement("div");
+    div.className = "item";
+
+    let title = "";
+    if (t === "receipt") {
+      title = `${r.data.receipt.store_name} / ¥${r.data.receipt.total}`;
+    } else if (t === "business_card") {
+      title = r.data.business_card.name;
+    } else if (t === "license_plate") {
+      title = r.data.license_plate.number;
+    } else {
+      title = "その他";
+    }
+
+    div.innerHTML = `
+      <div><b>${title}</b> (${r.createdAt})</div>
+      <button data-idx="${idx}">詳細</button>
+    `;
+    listDiv.appendChild(div);
+  });
+
+  listDiv.querySelectorAll("button").forEach(btn => {
+    btn.onclick = () => {
+      const idx = Number(btn.dataset.idx);
+      const recs = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+      document.getElementById("result").textContent = JSON.stringify(recs[idx].data, null, 2);
+    };
+  });
+}
+
+renderList();
+</script>
+</body>
+</html>
