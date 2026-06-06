@@ -10,7 +10,6 @@
   .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; }
   .tab.active { background:#333; color:#fff; }
   .item { border:1px solid #ddd; padding:6px; margin:4px 0; font-size:12px; }
-  .hidden { display:none; }
 </style>
 </head>
 <body>
@@ -52,12 +51,8 @@
 /* ============================
    APIキー管理（暗号化保存）
 ============================ */
-function encrypt(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-function decrypt(str) {
-  return decodeURIComponent(escape(atob(str)));
-}
+function encrypt(str) { return btoa(unescape(encodeURIComponent(str))); }
+function decrypt(str) { return decodeURIComponent(escape(atob(str))); }
 
 function loadApiKey() {
   const enc = localStorage.getItem("gemini_api_key");
@@ -70,9 +65,8 @@ function saveApiKey(key) {
 
 function updateApiKeyStatus() {
   const key = loadApiKey();
-  const status = document.getElementById("apiKeyStatus");
-  if (key) status.textContent = "APIキー：設定済み（非表示）";
-  else status.textContent = "APIキー：未設定";
+  document.getElementById("apiKeyStatus").textContent =
+    key ? "APIキー：設定済み（非表示）" : "APIキー：未設定";
 }
 
 document.getElementById("saveApiKeyBtn").onclick = () => {
@@ -91,6 +85,25 @@ document.getElementById("resetApiKeyBtn").onclick = () => {
 updateApiKeyStatus();
 
 /* ============================
+   JSON抽出（最強版）
+============================ */
+function extractJson(text) {
+  // コードブロック除去
+  text = text.replace(/```json/g, "").replace(/```/g, "");
+
+  // 最初の { 〜 最後の } を抽出
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+
+  if (start === -1 || end === -1) {
+    throw new Error("JSONが見つかりません");
+  }
+
+  const jsonString = text.substring(start, end + 1);
+  return JSON.parse(jsonString);
+}
+
+/* ============================
    OCRプロンプト
 ============================ */
 const OCR_PROMPT = `
@@ -100,7 +113,7 @@ const OCR_PROMPT = `
 
 【共通ルール】
 - 読み取れた文字は可能な限りそのまま抽出
-- 推測で補完しない（読めない部分は「不明」）
+- 推測で補完しない
 - 出力は必ず JSON のみ
 
 【出力形式】
@@ -178,8 +191,9 @@ async function analyzeImage(base64Image) {
   );
 
   const json = await res.json();
-  const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  return JSON.parse(text);
+  const raw = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  return extractJson(raw);
 }
 
 /* ============================
@@ -200,7 +214,7 @@ document.getElementById("ocrBtn").onclick = async () => {
     renderList();
   } catch (e) {
     console.error(e);
-    alert("解析に失敗しました");
+    alert("解析に失敗しました（JSON抽出エラー）");
   } finally {
     btn.disabled = false;
     btn.textContent = "OCR実行";
