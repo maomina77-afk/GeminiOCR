@@ -10,6 +10,9 @@
   .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; }
   .tab.active { background:#333; color:#fff; }
   .item { border:1px solid #ddd; padding:6px; margin:4px 0; font-size:12px; }
+  #debugOutput { white-space: pre-wrap; font-size:12px; background:#eef; padding:8px; margin-top:10px; }
+  #debugHeader { cursor:pointer; user-select:none; }
+  #debugOutput[hidden] { display:none; }
 </style>
 </head>
 <body>
@@ -46,6 +49,17 @@
 
 <h3>保存データ</h3>
 <div id="list"></div>
+
+<hr>
+
+<!-- デバッグモード -->
+<label>
+  <input type="checkbox" id="debugMode">
+  デバッグモード（Gemini返答を表示）
+</label>
+
+<div id="debugHeader">▼ デバッグ出力（クリックで開閉）</div>
+<div id="debugOutput" hidden></div>
 
 <script>
 /* ============================
@@ -85,22 +99,75 @@ document.getElementById("resetApiKeyBtn").onclick = () => {
 updateApiKeyStatus();
 
 /* ============================
-   JSON抽出（最強版）
+   デバッグ表示（コピー禁止・保存・折りたたみ・色分け）
 ============================ */
-function extractJson(text) {
-  // コードブロック除去
-  text = text.replace(/```json/g, "").replace(/```/g, "");
+function highlightJson(rawText) {
+  const match = rawText.match(/\{[\s\S]*\}/);
+  if (!match) return rawText;
 
-  // 最初の { 〜 最後の } を抽出
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
+  const jsonPart = match[0];
+  const before = rawText.slice(0, rawText.indexOf(jsonPart));
+  const after = rawText.slice(rawText.indexOf(jsonPart) + jsonPart.length);
 
-  if (start === -1 || end === -1) {
-    throw new Error("JSONが見つかりません");
+  return before + "\n" +
+         "[JSON部分]\n" +
+         jsonPart + "\n" +
+         "[/JSON部分]\n" +
+         after;
+}
+
+function showDebug(rawText, forceOn = false) {
+  const debugCheckbox = document.getElementById("debugMode");
+  if (forceOn) debugCheckbox.checked = true;
+
+  const debugOn = debugCheckbox.checked;
+  const box = document.getElementById("debugOutput");
+
+  if (!debugOn) {
+    box.hidden = true;
+    return;
   }
 
-  const jsonString = text.substring(start, end + 1);
-  return JSON.parse(jsonString);
+  box.hidden = false;
+
+  // コピー禁止
+  box.oncopy = (e) => {
+    e.preventDefault();
+    alert("デバッグ内容のコピーは禁止しています");
+  };
+
+  // 色分け（簡易：JSON部分をラベル付きで強調）
+  const text = highlightJson(rawText);
+  box.textContent = text;
+
+  // localStorage に保存
+  const logs = JSON.parse(localStorage.getItem("debug_logs") || "[]");
+  logs.unshift({ at: new Date().toISOString(), raw: rawText });
+  localStorage.setItem("debug_logs", JSON.stringify(logs));
+}
+
+// 折りたたみ
+document.getElementById("debugHeader").onclick = () => {
+  const box = document.getElementById("debugOutput");
+  box.hidden = !box.hidden;
+};
+
+/* ============================
+   JSON抽出（完全版）
+============================ */
+function extractJson(text) {
+  try {
+    text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("JSONブロックが見つかりません");
+    const jsonString = match[0];
+    return JSON.parse(jsonString);
+  } catch (e) {
+    console.error("extractJson error:", e, "raw text:", text);
+    // JSON抽出エラー時は自動でデバッグON
+    showDebug(text, true);
+    throw new Error("JSON抽出エラー");
+  }
 }
 
 /* ============================
@@ -167,7 +234,7 @@ async function analyzeImage(base64Image) {
   const API_KEY = loadApiKey();
   if (!API_KEY) {
     alert("APIキーが設定されていません");
-    return;
+    throw new Error("APIキー未設定");
   }
 
   const body = {
@@ -193,6 +260,9 @@ async function analyzeImage(base64Image) {
   const json = await res.json();
   const raw = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
+  // デバッグ表示（通常はチェックON時のみ）
+  showDebug(raw);
+
   return extractJson(raw);
 }
 
@@ -214,7 +284,7 @@ document.getElementById("ocrBtn").onclick = async () => {
     renderList();
   } catch (e) {
     console.error(e);
-    alert("解析に失敗しました（JSON抽出エラー）");
+    alert("解析に失敗しました：" + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "OCR実行";
