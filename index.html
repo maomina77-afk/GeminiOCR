@@ -154,8 +154,12 @@ window.addEventListener('DOMContentLoaded', () => {
   try {
     const savedImage = sessionStorage.getItem("saved_image");
     if (savedImage) {
+      // 修正: 画像が完全にロードされてからCropperを起動する
+      imageToCrop.onload = () => {
+        initCropper();
+        imageToCrop.onload = null; // 実行後に解除
+      };
       imageToCrop.src = savedImage;
-      initCropper();
     }
     const savedResult = sessionStorage.getItem("saved_result_data");
     if (savedResult) {
@@ -166,7 +170,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   renderList();
 });
-
 /* ============================
    APIキー管理
 ============================ */
@@ -207,24 +210,27 @@ function processSelectedFile(e) {
   const reader = new FileReader();
   reader.onload = (event) => {
     const base64Src = event.target.result;
+    
+    // 修正: 画像タグの読み込み完了を待ってからCropperを起動する
+    imageToCrop.onload = () => {
+      initCropper();
+      imageToCrop.onload = null; // 実行後に解除
+    };
+    
+    // onloadをセットした後にsrcを代入して確実にイベントを発火させる
     imageToCrop.src = base64Src;
     
-    // 【修正箇所】高画質画像によるStorage容量エラーでのフリーズを防止
     try {
       sessionStorage.setItem("saved_image", base64Src); 
     } catch(err) {
       console.warn("画像が大きいためセッション保存をスキップしました");
     }
-    
-    // 画像が読み込まれたら自動的にCropperを起動
-    initCropper();
   };
   reader.readAsDataURL(file);
   
   // 同じファイルを連続で選べるようにリセット
   e.target.value = '';
 }
-
 document.getElementById("cameraInput").addEventListener("change", processSelectedFile);
 document.getElementById("fileInput").addEventListener("change", processSelectedFile);
 
