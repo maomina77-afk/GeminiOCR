@@ -263,7 +263,7 @@ document.getElementById("fileInput").addEventListener("change", (e) => {
 });
 
 /* ============================
-   Gemini Flash OCR
+   Gemini Flash OCR（v1 正式版）
 ============================ */
 async function analyzeImage(base64Image) {
   const API_KEY = loadApiKey();
@@ -284,7 +284,7 @@ async function analyzeImage(base64Image) {
   };
 
   const res = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + API_KEY,
+    "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + API_KEY,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
