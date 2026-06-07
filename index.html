@@ -368,7 +368,7 @@ function buildReceiptPrompt() {
 - total_check = (subtotal_amount + tax_amount == total_amount)
 
 【カテゴリ分類ルール】
-以下の分類の中から最も適切なカテゴリとサブカテゴリを推定して記入してください。
+以下の分類を参考に最も適切なカテゴリとサブカテゴリを推定して記入してください。
 
 ■ 食品
 - 生鮮
@@ -415,7 +415,7 @@ JSON 以外の文章は書かないでください。`;
 }
 
 function buildLicensePlatePrompt() {
-  return `これは車のナンバープレートの画像です。以下の JSON だけを返してください。
+  return `これは日本車のナンバープレートの画像です。以下の JSON だけを返してください。
 
 {
   "type": "license_plate",
