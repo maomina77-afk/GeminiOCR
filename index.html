@@ -203,6 +203,9 @@ document.getElementById("resetApiKeyBtn").addEventListener("click", () => {
 /* ============================
    ファイル読み込みと自動移行処理
 ============================ */
+/* ============================
+   ファイル読み込みと自動移行処理
+============================ */
 function processSelectedFile(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -210,16 +213,23 @@ function processSelectedFile(e) {
   const reader = new FileReader();
   reader.onload = (event) => {
     const base64Src = event.target.result;
-    
-    // 修正: 画像タグの読み込み完了を待ってからCropperを起動する
+
+    // 【最重要修正】新しい画像をセットする"前"に、古いCropperを完全に破棄して初期化する
+    if (cropper) {
+      cropper.destroy();
+      cropper = null;
+    }
+
+    // 新しい画像の描画が完了したタイミングでCropperを起動
     imageToCrop.onload = () => {
       initCropper();
-      imageToCrop.onload = null; // 実行後に解除
+      imageToCrop.onload = null; // 実行後にイベントを解除
     };
-    
-    // onloadをセットした後にsrcを代入して確実にイベントを発火させる
+
+    // 画像データを流し込む（ここで画面に表示され、上のonloadが発火する）
     imageToCrop.src = base64Src;
     
+    // セッション保存（容量エラー時はスキップ）
     try {
       sessionStorage.setItem("saved_image", base64Src); 
     } catch(err) {
