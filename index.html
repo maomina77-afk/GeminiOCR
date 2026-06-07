@@ -20,17 +20,18 @@
   #imageToCrop { max-width: 100%; display: block; }
   
   /* 巨大な実行ボタン */
-  .giant-btn-container { text-align: center; margin: 30px 0; }
+/* 中央の実行ボタン */
+  .giant-btn-container { text-align: center; margin: 20px 0; }
   .giant-btn {
-    background: #28a745; color: #fff; border: none; padding: 20px 40px;
-    font-size: 22px; font-weight: bold; border-radius: 50px;
-    box-shadow: 0 8px 15px rgba(40, 167, 69, 0.3);
-    cursor: pointer; width: 90%; max-width: 500px;
+    background: #28a745; color: #fff; border: none; padding: 15px 30px; /* サイズを縮小 */
+    font-size: 16px; /* フォントサイズを標準化 */
+    font-weight: bold; border-radius: 8px; /* 丸みを調整 */
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+    cursor: pointer; width: 100%; max-width: 300px; /* 最大幅を制限 */
     transition: all 0.3s ease; display: inline-block;
   }
-  .giant-btn:disabled { background: #b2d8b6; box-shadow: none; cursor: not-allowed; transform: scale(0.98); }
-  .giant-btn:active:not(:disabled) { transform: scale(0.95); box-shadow: 0 4px 8px rgba(40, 167, 69, 0.2); }
-
+  .giant-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; transform: scale(0.98); }
+  .giant-btn:active:not(:disabled) { transform: scale(0.95); box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2); }
   /* 入力・UI周り */
   .control-group { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
   input[type="file"] { display: block; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: #fafafa; font-size: 16px;}
@@ -87,7 +88,7 @@
 
 <!-- 巨大な中央ボタン（初期状態は無効） -->
 <div class="giant-btn-container">
-  <button id="ocrBtn" class="giant-btn" disabled>✂️ クロップしてOCR実行</button>
+ <button id="ocrBtn" class="giant-btn">✂️ クロップしてOCR実行</button>
 </div>
 
 <!-- 解析結果（リッチ表示） -->
@@ -200,22 +201,22 @@ document.getElementById("fileInput").addEventListener("change", (e) => {
   reader.readAsDataURL(file);
 });
 
+/* ============================
+   Cropper初期化処理
+============================ */
 function initCropper() {
   if (cropper) {
     cropper.destroy();
   }
   
-  // Cropperの初期化と「Ready」時の自動スクロール処理
+  // Cropperの初期化と自動スクロール処理
   cropper = new Cropper(imageToCrop, {
     viewMode: 1,
-    autoCropArea: 0.9, // 初期クロップ範囲を少し大きめに
+    autoCropArea: 0.9,
     background: false,
     ready: function() {
-      // 準備完了した瞬間にボタンを有効化
-      ocrBtn.disabled = false;
       ocrBtn.textContent = "✂️ クロップしてOCR実行";
-      
-      // 自動的にボタンの位置までスムーズにスクロール
+      // 画像が読み込まれたらボタンの位置までスムーズにスクロール
       ocrBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
@@ -288,9 +289,15 @@ function extractJson(text) {
 
 /* ============================
    巨大実行ボタンのイベントリスナー（確実に発火させる）
+============================ *//* ============================
+   実行ボタンのイベントリスナー（修正版）
 ============================ */
 ocrBtn.addEventListener("click", async () => {
-  if (!cropper) return;
+  // 画像がセットされていない（cropperが起動していない）場合は弾く
+  if (!cropper) {
+    alert("先に「画像を選択 または 撮影」を行ってください。");
+    return;
+  }
   
   // ボタンの状態を「解析中」に変更
   ocrBtn.disabled = true; 
@@ -317,7 +324,7 @@ ocrBtn.addEventListener("click", async () => {
     renderList();
 
     // 成功後のボタン表示
-    ocrBtn.innerHTML = "✅ 解析完了！次の画像を読み込めます";
+    ocrBtn.innerHTML = "✅ 解析完了！";
     setTimeout(() => {
       ocrBtn.innerHTML = "✂️ クロップしてOCR実行";
       ocrBtn.disabled = false;
