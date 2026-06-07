@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OCRキャプチャ（Gemini 2.5 Flash / 完全統合版）</title>
+<title>OCRキャプチャ（Gemini 2.5 Flash / 完成版）</title>
 
 <!-- 外部ライブラリの読み込み -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
@@ -19,22 +19,31 @@
   .img-container { max-width: 100%; max-height: 50vh; margin-top: 15px; border: 2px dashed #ccc; background: #fff; border-radius: 8px; overflow: hidden;}
   #imageToCrop { max-width: 100%; display: block; }
   
-  /* 巨大な実行ボタン */
-/* 中央の実行ボタン */
+  /* カメラ・ファイル選択ボタン */
+  .action-btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+  .action-btn {
+    flex: 1; padding: 15px 10px; text-align: center; border-radius: 8px;
+    font-size: 16px; font-weight: bold; cursor: pointer; color: #fff;
+    transition: opacity 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .action-btn:active { transform: scale(0.98); }
+  .btn-camera { background: #007bff; }
+  .btn-folder { background: #6c757d; }
+
+  /* 実行ボタン（適正サイズ） */
   .giant-btn-container { text-align: center; margin: 20px 0; }
   .giant-btn {
-    background: #28a745; color: #fff; border: none; padding: 15px 30px; /* サイズを縮小 */
-    font-size: 16px; /* フォントサイズを標準化 */
-    font-weight: bold; border-radius: 8px; /* 丸みを調整 */
+    background: #28a745; color: #fff; border: none; padding: 15px 30px;
+    font-size: 18px; font-weight: bold; border-radius: 8px;
     box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
-    cursor: pointer; width: 100%; max-width: 300px; /* 最大幅を制限 */
+    cursor: pointer; width: 100%; max-width: 350px;
     transition: all 0.3s ease; display: inline-block;
   }
   .giant-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; transform: scale(0.98); }
   .giant-btn:active:not(:disabled) { transform: scale(0.95); box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2); }
+
   /* 入力・UI周り */
   .control-group { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
-  input[type="file"] { display: block; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: #fafafa; font-size: 16px;}
   
   /* 結果表示・リスト関連 */
   #resultBox { margin-top: 10px; padding: 20px; border: 1px solid #ddd; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); font-size: 15px; }
@@ -54,7 +63,6 @@
   button:hover { background: #f0f0f0; }
   #searchBar { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px;}
   .export-btn { background: #0066cc; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px;}
-  .export-btn:hover { background: #005bb5; }
 
   /* デバッグ */
   #debugOutput { white-space: pre-wrap; font-size:12px; background:#2d2d2d; color:#00ff00; padding:15px; margin-top:10px; user-select:none; border-radius: 4px;}
@@ -76,22 +84,30 @@
   <div id="apiKeyStatus" style="font-size:12px; color:#666; margin-top:8px;"></div>
 </div>
 
-<!-- ファイル選択（captureを外し、スマホでカメラとアルバムを選べるように改善） -->
+<!-- ファイル選択 / カメラ撮影 -->
 <div class="control-group">
-  <label style="font-weight: bold; display: block; margin-bottom: 8px;">画像を選択 または 撮影</label>
-  <input id="fileInput" type="file" accept="image/*">
+  <div class="action-btn-group">
+    <label class="action-btn btn-camera">
+      📷 カメラで撮影
+      <input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none;">
+    </label>
+    <label class="action-btn btn-folder">
+      📁 フォルダから選択
+      <input id="fileInput" type="file" accept="image/*" style="display:none;">
+    </label>
+  </div>
   
   <div class="img-container">
     <img id="imageToCrop" src="">
   </div>
 </div>
 
-<!-- 巨大な中央ボタン（初期状態は無効） -->
+<!-- 中央の実行ボタン -->
 <div class="giant-btn-container">
- <button id="ocrBtn" class="giant-btn">✂️ クロップしてOCR実行</button>
+  <button id="ocrBtn" class="giant-btn">✂️ クロップしてOCR実行</button>
 </div>
 
-<!-- 解析結果（リッチ表示） -->
+<!-- 解析結果 -->
 <h3 style="border-bottom: 2px solid #ccc; padding-bottom: 5px;">解析結果</h3>
 <div id="resultBox">画像を選択してOCRを実行してください。</div>
 
@@ -134,20 +150,19 @@ const ocrBtn = document.getElementById("ocrBtn");
 window.addEventListener('DOMContentLoaded', () => {
   updateApiKeyStatus();
   
-  // セッションからの復元（リロード対策）
-  const savedImage = sessionStorage.getItem("saved_image");
-  if (savedImage) {
-    imageToCrop.src = savedImage;
-    initCropper();
-  }
-
-  const savedResult = sessionStorage.getItem("saved_result_data");
-  if (savedResult) {
-    try {
+  // セッションからの復元（容量オーバーエラーを無視）
+  try {
+    const savedImage = sessionStorage.getItem("saved_image");
+    if (savedImage) {
+      imageToCrop.src = savedImage;
+      initCropper();
+    }
+    const savedResult = sessionStorage.getItem("saved_result_data");
+    if (savedResult) {
       const data = JSON.parse(savedResult);
-      document.getElementById("resultBox").innerHTML = renderDetail(data) + '<div style="font-size:11px; color:gray; margin-top:10px;">※リロードから復元されました</div>';
-    } catch(e) {}
-  }
+      document.getElementById("resultBox").innerHTML = renderDetail(data) + '<div style="font-size:11px; color:gray; margin-top:10px;">※前回状態から復元されました</div>';
+    }
+  } catch(e) { console.warn("復元処理エラー", e); }
 
   renderList();
 });
@@ -185,38 +200,46 @@ document.getElementById("resetApiKeyBtn").addEventListener("click", () => {
 /* ============================
    ファイル読み込みと自動移行処理
 ============================ */
-document.getElementById("fileInput").addEventListener("change", (e) => {
+function processSelectedFile(e) {
   const file = e.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
   reader.onload = (event) => {
     const base64Src = event.target.result;
-    sessionStorage.setItem("saved_image", base64Src); // リロード対策として保存
     imageToCrop.src = base64Src;
+    
+    // 【修正箇所】高画質画像によるStorage容量エラーでのフリーズを防止
+    try {
+      sessionStorage.setItem("saved_image", base64Src); 
+    } catch(err) {
+      console.warn("画像が大きいためセッション保存をスキップしました");
+    }
     
     // 画像が読み込まれたら自動的にCropperを起動
     initCropper();
   };
   reader.readAsDataURL(file);
-});
+  
+  // 同じファイルを連続で選べるようにリセット
+  e.target.value = '';
+}
 
-/* ============================
-   Cropper初期化処理
-============================ */
+document.getElementById("cameraInput").addEventListener("change", processSelectedFile);
+document.getElementById("fileInput").addEventListener("change", processSelectedFile);
+
 function initCropper() {
   if (cropper) {
     cropper.destroy();
   }
   
-  // Cropperの初期化と自動スクロール処理
   cropper = new Cropper(imageToCrop, {
     viewMode: 1,
     autoCropArea: 0.9,
     background: false,
     ready: function() {
       ocrBtn.textContent = "✂️ クロップしてOCR実行";
-      // 画像が読み込まれたらボタンの位置までスムーズにスクロール
+      ocrBtn.disabled = false;
       ocrBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
@@ -288,42 +311,37 @@ function extractJson(text) {
 }
 
 /* ============================
-   巨大実行ボタンのイベントリスナー（確実に発火させる）
-============================ *//* ============================
-   実行ボタンのイベントリスナー（修正版）
+   実行ボタンのイベントリスナー
 ============================ */
 ocrBtn.addEventListener("click", async () => {
-  // 画像がセットされていない（cropperが起動していない）場合は弾く
   if (!cropper) {
-    alert("先に「画像を選択 または 撮影」を行ってください。");
+    alert("先に「📷 カメラで撮影」または「📁 フォルダから選択」を行ってください。");
     return;
   }
   
-  // ボタンの状態を「解析中」に変更
   ocrBtn.disabled = true; 
   ocrBtn.innerHTML = "⏳ 解析中...しばらくお待ちください";
 
   try {
-    // API送信用の高画質画像
+    // API送信用
     const canvasAPI = cropper.getCroppedCanvas({ maxWidth: 1075, maxHeight: 1075 });
     const base64API = canvasAPI.toDataURL("image/jpeg", 0.9).split(",")[1];
 
-    // 保存用サムネイル
-    const canvasThumb = cropper.getCroppedCanvas({ maxWidth: 300, maxHeight: 300 });
-    const base64Thumb = canvasThumb.toDataURL("image/jpeg", 0.6);
+    // 【修正箇所】サムネイルを強く圧縮して、ブラウザ保存領域のパンクを防ぐ
+    const canvasThumb = cropper.getCroppedCanvas({ maxWidth: 150, maxHeight: 150 });
+    const base64Thumb = canvasThumb.toDataURL("image/jpeg", 0.5);
 
     // 解析実行
     const data = await analyzeImage(base64API);
     
-    // 表示とセッション保存
+    // 表示とセッション保存（エラー回避）
     document.getElementById("resultBox").innerHTML = renderDetail(data);
-    sessionStorage.setItem("saved_result_data", JSON.stringify(data));
+    try { sessionStorage.setItem("saved_result_data", JSON.stringify(data)); } catch(e) {}
 
     // ローカル保存とリスト更新
     saveRecord(data, base64Thumb);
     renderList();
 
-    // 成功後のボタン表示
     ocrBtn.innerHTML = "✅ 解析完了！";
     setTimeout(() => {
       ocrBtn.innerHTML = "✂️ クロップしてOCR実行";
@@ -386,12 +404,14 @@ function renderDetail(data) {
    データ保存・一覧表示・検索・削除
 ============================ */
 function saveRecord(data, thumbnail) {
-  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  let records = [];
+  try { records = JSON.parse(localStorage.getItem("ocr_records") || "[]"); } catch(e) {}
   records.unshift({ id: Date.now(), createdAt: new Date().toISOString(), data, thumbnail });
+  
   try {
     localStorage.setItem("ocr_records", JSON.stringify(records));
   } catch(e) {
-    alert("ブラウザの保存容量がいっぱいです。不要なデータを削除してください。");
+    alert("保存容量がいっぱいです。下のリストから不要なデータを削除してください。");
   }
 }
 
@@ -403,7 +423,9 @@ function getTitle(t, data) {
 }
 
 function renderList() {
-  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  let records = [];
+  try { records = JSON.parse(localStorage.getItem("ocr_records") || "[]"); } catch(e) {}
+  
   const listDiv = document.getElementById("list");
   listDiv.innerHTML = "";
 
@@ -441,14 +463,13 @@ function renderList() {
   });
 }
 
-// グローバル関数として登録
 window.showDetail = function(recordId, hasId) {
   const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
   let record = hasId ? records.find(r => String(r.id) === String(recordId)) : records[Number(recordId)];
   
   if(record) {
     document.getElementById("resultBox").innerHTML = renderDetail(record.data);
-    sessionStorage.setItem("saved_result_data", JSON.stringify(record.data)); 
+    try{ sessionStorage.setItem("saved_result_data", JSON.stringify(record.data)); } catch(e){}
     document.getElementById("resultBox").scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 };
@@ -467,7 +488,6 @@ window.deleteRecord = function(recordId, hasId) {
   renderList();
 };
 
-// タブ・検索イベント
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
