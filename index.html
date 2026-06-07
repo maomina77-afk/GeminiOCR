@@ -2,50 +2,87 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>OCRキャプチャ（Gemini Flash）</title>
-<style>
-  body { font-family: sans-serif; padding: 10px; }
-  #preview { max-width: 100%; margin-top: 10px; border: 1px solid #ccc; }
-  #result { white-space: pre-wrap; font-size: 12px; background:#f7f7f7; padding:8px; }
-  .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; }
-  .tab.active { background:#333; color:#fff; }
-  .item { border:1px solid #ddd; padding:6px; margin:4px 0; font-size:12px; }
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCRキャプチャ（Gemini 2.5 Flash）</title>
 
-  #debugOutput { 
-    white-space: pre-wrap; 
-    font-size:12px; 
-    background:#eef; 
-    padding:8px; 
-    margin-top:10px; 
-    user-select:none; /* コピー禁止 */
-  }
+<!-- Cropper.js (トリミング用) -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+<!-- JSZip & FileSaver (ZIP保存用) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<!-- SheetJS (Excel保存用) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  body { font-family: sans-serif; padding: 10px; max-width: 800px; margin: 0 auto; }
+  
+  /* 画像・トリミング関連 */
+  .img-container { max-width: 100%; max-height: 50vh; margin-top: 10px; border: 1px solid #ccc; background: #eee; }
+  #imageToCrop { max-width: 100%; display: block; }
+  
+  /* 結果表示・UI関連 */
+  #resultBox { margin-top: 10px; padding: 10px; border: 1px solid #aaa; background: #fff; border-radius: 4px; }
+  .tab { display: inline-block; padding: 8px 12px; border:1px solid #ccc; cursor:pointer; margin-bottom: 5px; background: #f9f9f9;}
+  .tab.active { background:#333; color:#fff; }
+  .item { border:1px solid #ddd; padding:8px; margin:6px 0; font-size:14px; display: flex; align-items: center; gap: 10px; }
+  .thumb { width: 50px; height: 50px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
+  
+  /* レシートのテーブル */
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+  th { background: #eee; }
+  .price-col { text-align: right; }
+
+  /* コントロール・ボタン */
+  button { padding: 6px 12px; cursor: pointer; }
+  .control-group { margin-bottom: 15px; }
+  #searchBar { padding: 6px; width: 60%; max-width: 200px; }
+  .export-btn { background: #0066cc; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; margin-bottom: 10px; font-weight: bold;}
+
+  /* デバッグ */
+  #debugOutput { white-space: pre-wrap; font-size:12px; background:#eef; padding:8px; margin-top:10px; user-select:none; }
   #debugOutput[hidden] { display:none; }
-  #debugHeader { cursor:pointer; user-select:none; }
+  #debugHeader { cursor:pointer; user-select:none; color: #666; font-size: 12px;}
 </style>
 </head>
 <body>
 
-<h2>OCRキャプチャ（レシート／名刺／ナンバー）</h2>
+<h2>OCRキャプチャ（高機能版）</h2>
 
 <!-- APIキー管理 -->
-<h3>APIキー設定</h3>
-<input id="apiKeyInput" type="password" placeholder="APIキーを入力">
-<button id="saveApiKeyBtn">保存</button>
-<button id="resetApiKeyBtn">再入力</button>
-<div id="apiKeyStatus"></div>
-
+<div class="control-group">
+  <input id="apiKeyInput" type="password" placeholder="APIキーを入力">
+  <button id="saveApiKeyBtn">保存</button>
+  <button id="resetApiKeyBtn">消去</button>
+  <div id="apiKeyStatus" style="font-size:12px; color:gray; margin-top:4px;"></div>
+</div>
 <hr>
 
-<!-- 撮影 -->
-<input id="fileInput" type="file" accept="image/*" capture="environment"><br>
-<img id="preview">
+<!-- 撮影とトリミング -->
+<div class="control-group">
+  <input id="fileInput" type="file" accept="image/*" capture="environment"><br>
+  <div class="img-container">
+    <img id="imageToCrop" src="">
+  </div>
+  <div style="margin-top: 10px;">
+    <button id="ocrBtn" disabled style="background:#28a745; color:#fff; border:none; padding:10px 20px; font-size:16px; border-radius:4px;">✂️ クロップしてOCR実行</button>
+  </div>
+</div>
 
-<button id="ocrBtn" disabled>OCR実行</button>
-
+<!-- 解析結果（リッチ表示） -->
 <h3>解析結果</h3>
-<div id="result"></div>
+<div id="resultBox">画像を選択してOCRを実行してください。</div>
 
 <hr>
+
+<!-- エクスポートと検索 -->
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+  <button id="exportZipBtn" class="export-btn">📦 ZIP＆Excel出力</button>
+  <input type="text" id="searchBar" placeholder="🔍 ナンバーや品名を検索...">
+</div>
 
 <!-- タブ -->
 <div>
@@ -55,23 +92,22 @@
   <span class="tab" data-tab="plate">ナンバー</span>
 </div>
 
-<h3>保存データ</h3>
+<!-- 保存データ一覧 -->
 <div id="list"></div>
 
 <hr>
 
 <!-- デバッグモード -->
-<label>
+<label style="font-size:12px;">
   <input type="checkbox" id="debugMode">
   デバッグモード（Gemini返答を表示）
 </label>
-
 <div id="debugHeader">▼ デバッグ出力（クリックで開閉）</div>
 <div id="debugOutput" hidden></div>
 
 <script>
 /* ============================
-   APIキー管理（暗号化保存）
+   APIキー管理
 ============================ */
 function encrypt(str) { return btoa(unescape(encodeURIComponent(str))); }
 function decrypt(str) { return decodeURIComponent(escape(atob(str))); }
@@ -81,20 +117,15 @@ function loadApiKey() {
   return enc ? decrypt(enc) : null;
 }
 
-function saveApiKey(key) {
-  localStorage.setItem("gemini_api_key", encrypt(key));
-}
-
 function updateApiKeyStatus() {
   const key = loadApiKey();
-  document.getElementById("apiKeyStatus").textContent =
-    key ? "APIキー：設定済み（非表示）" : "APIキー：未設定";
+  document.getElementById("apiKeyStatus").textContent = key ? "APIキー：設定済み" : "APIキー：未設定";
 }
 
 document.getElementById("saveApiKeyBtn").onclick = () => {
   const key = document.getElementById("apiKeyInput").value.trim();
   if (!key) return alert("APIキーを入力してください");
-  saveApiKey(key);
+  localStorage.setItem("gemini_api_key", encrypt(key));
   document.getElementById("apiKeyInput").value = "";
   updateApiKeyStatus();
 };
@@ -103,245 +134,257 @@ document.getElementById("resetApiKeyBtn").onclick = () => {
   localStorage.removeItem("gemini_api_key");
   updateApiKeyStatus();
 };
-
 updateApiKeyStatus();
 
 /* ============================
-   デバッグ表示（コピー禁止・保存・折りたたみ・色分け）
-============================ */
-function highlightJson(rawText) {
-  const match = rawText.match(/\{[\s\S]*\}/);
-  if (!match) return rawText;
-
-  const jsonPart = match[0];
-  const before = rawText.slice(0, rawText.indexOf(jsonPart));
-  const after = rawText.slice(rawText.indexOf(jsonPart) + jsonPart.length);
-
-  return before + "\n" +
-         "【JSON部分】\n" +
-         jsonPart + "\n" +
-         "【/JSON部分】\n" +
-         after;
-}
-
-function showDebug(rawText, forceOn = false) {
-  const debugCheckbox = document.getElementById("debugMode");
-  if (forceOn) debugCheckbox.checked = true;
-
-  const debugOn = debugCheckbox.checked;
-  const box = document.getElementById("debugOutput");
-
-  if (!debugOn) {
-    box.hidden = true;
-    return;
-  }
-
-  box.hidden = false;
-
-  // コピー禁止
-  box.oncopy = (e) => {
-    e.preventDefault();
-    alert("デバッグ内容のコピーは禁止しています");
-  };
-
-  // 空の場合は理由を表示
-  if (!rawText || rawText.trim() === "") {
-    rawText = "[Gemini からの返答が空です]\n" +
-              "APIキーが無効、無料枠超過、またはネットワークエラーの可能性があります。";
-  }
-
-  // JSON部分を強調
-  const text = highlightJson(rawText);
-  box.textContent = text;
-
-  // localStorage に保存
-  const logs = JSON.parse(localStorage.getItem("debug_logs") || "[]");
-  logs.unshift({ at: new Date().toISOString(), raw: rawText });
-  localStorage.setItem("debug_logs", JSON.stringify(logs));
-}
-
-// 折りたたみ
-document.getElementById("debugHeader").onclick = () => {
-  const box = document.getElementById("debugOutput");
-  box.hidden = !box.hidden;
-};
-
-/* ============================
-   JSON抽出（完全版）
-============================ */
-function extractJson(text) {
-  try {
-    text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("JSONブロックが見つかりません");
-    const jsonString = match[0];
-    return JSON.parse(jsonString);
-  } catch (e) {
-    console.error("extractJson error:", e, "raw text:", text);
-    showDebug(text, true); // 自動でデバッグON
-    throw new Error("JSON抽出エラー");
-  }
-}
-
-/* ============================
-   Gemini返答の raw を安全に取得
-============================ */
-function getRawTextFromGemini(json) {
-  try {
-    if (json.error) {
-      return "【Gemini API エラー】\n" + JSON.stringify(json.error, null, 2);
-    }
-
-    const parts = json.candidates?.[0]?.content?.parts;
-    if (!parts) return "";
-
-    let raw = "";
-    for (const p of parts) {
-      if (p.text) raw += p.text + "\n";
-    }
-    return raw.trim();
-  } catch {
-    return "";
-  }
-}
-
-/* ============================
-   OCRプロンプト
+   OCRプロンプト（高機能化）
 ============================ */
 const OCR_PROMPT = `
 あなたは高精度OCRエンジンとして動作します。
-以下の画像が「レシート」「名刺」「自動車ナンバープレート」「その他」のどれかを自動判別し、
-種類に応じて最適な項目を抽出し、JSON形式で返してください。
+以下の画像が「レシート」「名刺」「自動車ナンバープレート」「その他」のどれかを自動判別し、JSON形式で返してください。
 
-【共通ルール】
-- 読み取れた文字は可能な限りそのまま抽出
-- 推測で補完しない
-- 出力は必ず JSON のみ
+【抽出ルール】
+- 読み取れた文字はそのまま抽出、推測で補完しない。
+- レシートの場合、決済方法（現金、クレカ、PayPay等）と、商品一覧を抽出し、商品名から一般的な「カテゴリ（食品、日用品、衣類など）」を推測してください。
+- 出力は必ず JSON のみ。Markdownの装飾(```json)は不要。
 
 【出力形式】
 {
   "type": "receipt | business_card | license_plate | other",
-  "raw_text": "",
-  "receipt": { "store_name": "", "date": "", "total": "", "items": [] },
+  "raw_text": "読み取った全文",
+  "receipt": { 
+    "store_name": "", 
+    "date": "", 
+    "total": "", 
+    "payment_method": "", 
+    "items": [
+      { "name": "商品名", "price": "金額", "estimated_category": "カテゴリ" }
+    ] 
+  },
   "business_card": { "name": "", "company": "", "phone": "", "email": "" },
   "license_plate": { "region": "", "class_number": "", "hiragana": "", "number": "" }
 }
 `;
 
 /* ============================
-   画像リサイズ（1075px）
+   画像トリミング (Cropper.js)
 ============================ */
-const MAX_SIZE = 1075;
-let currentBase64 = null;
+let cropper = null;
+const imageToCrop = document.getElementById("imageToCrop");
 
 document.getElementById("fileInput").addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      currentBase64 = dataUrl.split(",")[1];
-
-      document.getElementById("preview").src = dataUrl;
-      document.getElementById("ocrBtn").disabled = false;
-    };
-    img.src = reader.result;
+  reader.onload = (event) => {
+    imageToCrop.src = event.target.result;
+    document.getElementById("ocrBtn").disabled = false;
+    
+    // 既存のCropperがあれば破棄
+    if (cropper) cropper.destroy();
+    
+    // 新しいCropperを初期化
+    cropper = new Cropper(imageToCrop, {
+      viewMode: 1,
+      autoCropArea: 1,
+      background: false,
+    });
   };
   reader.readAsDataURL(file);
 });
 
 /* ============================
-   Gemini Flash OCR（v1 正式版）
+   Gemini 2.5 Flash API呼び出し
 ============================ */
 async function analyzeImage(base64Image) {
   const API_KEY = loadApiKey();
-  if (!API_KEY) {
-    alert("APIキーが設定されていません");
-    throw new Error("APIキー未設定");
-  }
+  if (!API_KEY) throw new Error("APIキー未設定");
 
   const body = {
-    contents: [
-      {
-        parts: [
-          { text: OCR_PROMPT },
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-        ]
-      }
-    ]
+    contents: [{
+      parts: [
+        { text: OCR_PROMPT },
+        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+      ]
+    }]
   };
 
   const res = await fetch(
-    "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-001:generateContent?key=" + API_KEY,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }
+    "[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=)" + API_KEY,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
   );
 
   const json = await res.json();
-
-  // raw を安全に取得
   const raw = getRawTextFromGemini(json);
-
-  // デバッグ表示
   showDebug(raw);
-
   return extractJson(raw);
 }
 
+function getRawTextFromGemini(json) {
+  try {
+    if (json.error) return "【エラー】" + JSON.stringify(json.error);
+    return json.candidates[0].content.parts.map(p => p.text).join("\n").trim();
+  } catch { return ""; }
+}
+
+function extractJson(text) {
+  try {
+    text = text.replace(/
+```json/gi, "").replace(/```/g, "").trim();
+    return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+  } catch (e) { throw new Error("JSON抽出エラー"); }
+}
+
 /* ============================
-   OCR実行
+   結果のリッチ表示 (HTML生成)
+============================ */
+function renderDetail(data) {
+  let html = `<strong>タイプ:</strong> ${data.type}<br><hr>`;
+  
+  if (data.type === 'receipt' && data.receipt) {
+    const r = data.receipt;
+    html += `
+      <strong>店舗名:</strong> ${r.store_name || '-'} <br>
+      <strong>日時:</strong> ${r.date || '-'} <br>
+      <strong>合計金額:</strong> ¥${r.total || '-'} <br>
+      <strong>支払方法:</strong> ${r.payment_method || '-'} <br>
+      <table>
+        <tr><th>品名</th><th>カテゴリ</th><th class="price-col">金額</th></tr>`;
+    (r.items || []).forEach(item => {
+      html += `<tr><td>${item.name}</td><td>${item.estimated_category}</td><td class="price-col">¥${item.price}</td></tr>`;
+    });
+    html += `</table>`;
+  } 
+  else if (data.type === 'business_card' && data.business_card) {
+    const b = data.business_card;
+    // 電話番号を発信可能なリンクに
+    const phoneLink = b.phone ? `<a href="tel:${b.phone.replace(/-/g, '')}">${b.phone}</a>` : '-';
+    html += `
+      <strong>会社名:</strong> ${b.company || '-'} <br>
+      <strong>氏名:</strong> ${b.name || '-'} <br>
+      <strong>電話番号:</strong> ${phoneLink} <br>
+      <strong>Email:</strong> ${b.email || '-'} <br>
+    `;
+  }
+  else if (data.type === 'license_plate' && data.license_plate) {
+    const p = data.license_plate;
+    html += `
+      <strong>地域:</strong> ${p.region || '-'} <br>
+      <strong>分類番号:</strong> ${p.class_number || '-'} <br>
+      <strong>ひらがな:</strong> ${p.hiragana || '-'} <br>
+      <strong>一連指定番号:</strong> <strong style="font-size:1.2em;">${p.number || '-'}</strong> <br>
+    `;
+  }
+  else {
+    html += `<div style="white-space:pre-wrap; font-size:12px;">${data.raw_text || 'テキストなし'}</div>`;
+  }
+  return html;
+}
+
+/* ============================
+   実行ボタン
 ============================ */
 document.getElementById("ocrBtn").onclick = async () => {
-  if (!currentBase64) return;
-
+  if (!cropper) return;
   const btn = document.getElementById("ocrBtn");
-  btn.disabled = true;
-  btn.textContent = "解析中…";
+  btn.disabled = true; btn.textContent = "解析中…";
 
   try {
-    const data = await analyzeImage(currentBase64);
-    document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+    // 1. API送信用の高画質画像 (最大1075px)
+    const canvasAPI = cropper.getCroppedCanvas({ maxWidth: 1075, maxHeight: 1075 });
+    const base64API = canvasAPI.toDataURL("image/jpeg", 0.9).split(",")[1];
 
-    saveRecord(data);
+    // 2. ローカル保存用のサムネイル (最大300px, 容量節約のため)
+    const canvasThumb = cropper.getCroppedCanvas({ maxWidth: 300, maxHeight: 300 });
+    const base64Thumb = canvasThumb.toDataURL("image/jpeg", 0.6);
+
+    // 解析実行
+    const data = await analyzeImage(base64API);
+    
+    // 詳細表示
+    document.getElementById("resultBox").innerHTML = renderDetail(data);
+
+    // 保存
+    saveRecord(data, base64Thumb);
     renderList();
+
   } catch (e) {
-    console.error(e);
-    alert("解析に失敗しました：" + e.message);
+    alert("解析失敗：" + e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = "OCR実行";
+    btn.disabled = false; btn.textContent = "✂️ クロップしてOCR実行";
   }
 };
 
 /* ============================
-   保存（localStorage）
+   データ保存・一覧表示・検索
 ============================ */
-function saveRecord(data) {
-  const key = "ocr_records";
-  const now = new Date().toISOString();
-  const records = JSON.parse(localStorage.getItem(key) || "[]");
-  records.unshift({ createdAt: now, data });
-  localStorage.setItem(key, JSON.stringify(records));
+function saveRecord(data, thumbnail) {
+  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  records.unshift({ id: Date.now(), createdAt: new Date().toISOString(), data, thumbnail });
+  // 容量制限エラー回避のため、100件以上は古いものを消すなどの処理を入れると安全です
+  try {
+    localStorage.setItem("ocr_records", JSON.stringify(records));
+  } catch(e) {
+    alert("ブラウザの保存容量がいっぱいです。古いデータを削除してください。");
+  }
 }
 
-/* ============================
-   タブ切り替え
-============================ */
+function getTitle(t, data) {
+  if (t === "receipt") return `${data.receipt?.store_name || '不明'} / ¥${data.receipt?.total || 0}`;
+  if (t === "business_card") return data.business_card?.name || '不明';
+  if (t === "license_plate") return data.license_plate?.number || '不明';
+  return "その他";
+}
+
+function renderList() {
+  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  const listDiv = document.getElementById("list");
+  listDiv.innerHTML = "";
+
+  const activeTab = document.querySelector(".tab.active").dataset.tab;
+  const searchWord = document.getElementById("searchBar").value.toLowerCase();
+
+  records.forEach((r) => {
+    const t = r.data.type;
+    if (activeTab !== "all" && activeTab !== "receipt" && t === "receipt") return; // fallback
+    if (activeTab === "receipt" && t !== "receipt") return;
+    if (activeTab === "business" && t !== "business_card") return;
+    if (activeTab === "plate" && t !== "license_plate") return;
+
+    // 検索フィルター (文字列化してざっくり検索)
+    const dataString = JSON.stringify(r.data).toLowerCase();
+    if (searchWord && !dataString.includes(searchWord)) return;
+
+    const div = document.createElement("div");
+    div.className = "item";
+
+    const imgSrc = r.thumbnail ? r.thumbnail : "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+    const dateStr = new Date(r.createdAt).toLocaleString();
+    const title = getTitle(t, r.data);
+
+    div.innerHTML = `
+      <img src="${imgSrc}" class="thumb">
+      <div style="flex-grow:1;">
+        <div style="font-weight:bold;">${title}</div>
+        <div style="font-size:11px; color:#666;">${dateStr} (${t})</div>
+      </div>
+      <button onclick="showDetail(${r.id})">詳細</button>
+    `;
+    listDiv.appendChild(div);
+  });
+}
+
+window.showDetail = function(id) {
+  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  const record = records.find(r => r.id === id);
+  if(record) {
+    document.getElementById("resultBox").innerHTML = renderDetail(record.data);
+    window.scrollTo({ top: document.getElementById("resultBox").offsetTop - 20, behavior: 'smooth' });
+  }
+};
+
+// タブ・検索イベント
 document.querySelectorAll(".tab").forEach(tab => {
   tab.onclick = () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -349,56 +392,81 @@ document.querySelectorAll(".tab").forEach(tab => {
     renderList();
   };
 });
+document.getElementById("searchBar").addEventListener("input", renderList);
+renderList();
 
 /* ============================
-   一覧表示（タブ別）
+   ZIP & Excel エクスポート
 ============================ */
-function renderList() {
-  const key = "ocr_records";
-  const records = JSON.parse(localStorage.getItem(key) || "[]");
-  const listDiv = document.getElementById("list");
-  listDiv.innerHTML = "";
+document.getElementById("exportZipBtn").onclick = async () => {
+  const records = JSON.parse(localStorage.getItem("ocr_records") || "[]");
+  if (records.length === 0) return alert("出力するデータがありません");
 
-  const activeTab = document.querySelector(".tab.active").dataset.tab;
+  const zip = new JSZip();
+  const imgFolder = zip.folder("images");
+  
+  // Excelデータの準備 (ヘッダー)
+  const wsData = [["日時", "種類", "タイトル", "画像パス", "生テキスト", "JSONデータ"]];
 
   records.forEach((r, idx) => {
     const t = r.data.type;
+    const title = getTitle(t, r.data);
+    let imagePath = "";
 
-    if (activeTab === "receipt" && t !== "receipt") return;
-    if (activeTab === "business" && t !== "business_card") return;
-    if (activeTab === "plate" && t !== "license_plate") return;
-
-    const div = document.createElement("div");
-    div.className = "item";
-
-    let title = "";
-    if (t === "receipt") {
-      title = `${r.data.receipt.store_name} / ¥${r.data.receipt.total}`;
-    } else if (t === "business_card") {
-      title = r.data.business_card.name;
-    } else if (t === "license_plate") {
-      title = r.data.license_plate.number;
-    } else {
-      title = "その他";
+    // サムネイル画像をZIPフォルダに追加
+    if (r.thumbnail) {
+      const fileName = `img_${idx}_${r.id}.jpg`;
+      const base64Data = r.thumbnail.split(',')[1];
+      if (base64Data) {
+        imgFolder.file(fileName, base64Data, {base64: true});
+        imagePath = `images/${fileName}`; // 相対リンク
+      }
     }
 
-    div.innerHTML = `
-      <div><b>${title}</b> (${r.createdAt})</div>
-      <button data-idx="${idx}">詳細</button>
-    `;
-    listDiv.appendChild(div);
+    wsData.push([
+      new Date(r.createdAt).toLocaleString(),
+      t,
+      title,
+      imagePath,
+      r.data.raw_text || "",
+      JSON.stringify(r.data)
+    ]);
   });
 
-  listDiv.querySelectorAll("button").forEach(btn => {
-    btn.onclick = () => {
-      const idx = Number(btn.dataset.idx);
-      const recs = JSON.parse(localStorage.getItem("ocr_records") || "[]");
-      document.getElementById("result").textContent = JSON.stringify(recs[idx].data, null, 2);
-    };
-  });
+  // Excelファイルの作成
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "OCR_Records");
+  const excelBuffer = XLSX.write(wb, {bookType: 'xlsx', type: 'array'});
+  
+  zip.file("ocr_data.xlsx", excelBuffer);
+
+  // ZIP生成とダウンロード
+  const btn = document.getElementById("exportZipBtn");
+  btn.textContent = "⏳ 作成中...";
+  try {
+    const content = await zip.generateAsync({type:"blob"});
+    saveAs(content, `ocr_export_${Date.now()}.zip`);
+  } catch (e) {
+    alert("ZIP作成エラー: " + e.message);
+  } finally {
+    btn.textContent = "📦 ZIP＆Excel出力";
+  }
+};
+
+/* ============================
+   デバッグ表示
+============================ */
+function showDebug(text) {
+  const box = document.getElementById("debugOutput");
+  if (!document.getElementById("debugMode").checked) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = text || "空のレスポンス";
 }
-
-renderList();
+document.getElementById("debugHeader").onclick = () => {
+  const box = document.getElementById("debugOutput");
+  box.hidden = !box.hidden;
+};
 </script>
 </body>
 </html>
