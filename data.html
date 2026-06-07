@@ -13,8 +13,9 @@
   --primary: #007aff;
   --bg: #f2f2f7;
   --card-bg: #ffffff;
-  --border-radius: 14px;
+  --radius: 14px;
 }
+* { box-sizing: border-box; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
@@ -37,7 +38,7 @@ header {
 }
 .card {
   background: var(--card-bg);
-  border-radius: var(--border-radius);
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 10px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
@@ -65,7 +66,6 @@ textarea {
   border: 1px solid #d1d1d6;
   padding: 6px 8px;
   font-size: 12px;
-  box-sizing: border-box;
 }
 button {
   border-radius: 999px;
@@ -138,11 +138,11 @@ button {
       <option value="business_card">名刺</option>
       <option value="license_plate">ナンバープレート</option>
     </select>
-    <input type="text" id="searchText" placeholder="キーワード検索">
+    <input type="text" id="searchText" placeholder="キーワード検索（店名・品名など）">
   </div>
 
   <div class="controls">
-    <button class="btn-outline" id="excelBtn">Excel 出力</button>
+    <button class="btn-outline" id="excelBtn">家計簿 Excel 出力</button>
     <button class="btn-outline" id="clearBtn">全削除</button>
   </div>
 
@@ -178,7 +178,8 @@ function renderList() {
 
   const filtered = dataList.filter(item => {
     if (typeFilter && item.type !== typeFilter) return false;
-    if (keyword && !item.data.toLowerCase().includes(keyword.toLowerCase())) return false;
+    const text = (item.raw || "") + " " + JSON.stringify(item.json || {});
+    if (keyword && !text.toLowerCase().includes(keyword.toLowerCase())) return false;
     return true;
   });
 
@@ -208,7 +209,7 @@ function renderList() {
     header.appendChild(badge);
 
     const textarea = document.createElement("textarea");
-    textarea.value = item.data || "";
+    textarea.value = item.raw || "";
 
     const btnRow = document.createElement("div");
     btnRow.style.display = "flex";
@@ -220,7 +221,8 @@ function renderList() {
     saveBtn.className = "btn-primary";
     saveBtn.textContent = "保存";
     saveBtn.onclick = () => {
-      item.data = textarea.value;
+      item.raw = textarea.value;
+      // JSON は必要なら手動で更新（ここでは raw のみ）
       localStorage.setItem("ocrData", JSON.stringify(dataList));
       alert("更新しました");
     };
@@ -249,22 +251,50 @@ function renderList() {
 document.getElementById("filterType").onchange = renderList;
 document.getElementById("searchText").oninput = renderList;
 
-/* Excel 出力（SheetJS） */
+/* 家計簿 Excel 出力 */
 document.getElementById("excelBtn").onclick = () => {
   if (dataList.length === 0) {
     alert("データがありません");
     return;
   }
-  const rows = dataList.map(item => ({
-    id: item.id,
-    type: item.type,
-    time: new Date(item.time).toLocaleString(),
-    data: item.data
-  }));
+
+  const rows = [];
+
+  dataList.forEach(item => {
+    if (item.type !== "receipt" || !item.json) return;
+    const r = item.json;
+    const date = r.date || "";
+    const store = r.store_name || "";
+    const pay = r.payment_method || "";
+    const total = r.total_amount || 0;
+    const items = Array.isArray(r.items) ? r.items : [];
+
+    items.forEach(it => {
+      rows.push({
+        日付: date,
+        店名: store,
+        カテゴリ: it.category || "",
+        サブカテゴリ: it.subcategory || "",
+        品名: it.name || "",
+        数量: it.qty || 0,
+        単価: it.unit_price || 0,
+        小計: it.subtotal || 0,
+        支払い方法: pay,
+        合計金額: total,
+        メモ: ""
+      });
+    });
+  });
+
+  if (rows.length === 0) {
+    alert("レシートの JSON データがありません");
+    return;
+  }
+
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "OCR Data");
-  XLSX.writeFile(wb, "ocr_data.xlsx");
+  XLSX.utils.book_append_sheet(wb, ws, "家計簿");
+  XLSX.writeFile(wb, "kakeibo_receipts.xlsx");
 };
 
 /* 全削除 */

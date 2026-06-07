@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OCR Capture App</title>
+<title>OCR Capture</title>
 
 <!-- Cropper.js -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" rel="stylesheet">
@@ -17,8 +17,9 @@
   --primary: #007aff;
   --bg: #f2f2f7;
   --card-bg: #ffffff;
-  --border-radius: 14px;
+  --radius: 14px;
 }
+* { box-sizing: border-box; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
@@ -41,7 +42,7 @@ header {
 }
 .card {
   background: var(--card-bg);
-  border-radius: var(--border-radius);
+  border-radius: var(--radius);
   padding: 12px 14px;
   margin-bottom: 12px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
@@ -55,7 +56,10 @@ label {
   font-size: 13px;
   color: #555;
 }
-input[type="text"], input[type="file"], select {
+input[type="text"],
+input[type="password"],
+input[type="file"],
+select {
   width: 100%;
   padding: 8px 10px;
   margin-top: 4px;
@@ -63,7 +67,9 @@ input[type="text"], input[type="file"], select {
   border-radius: 10px;
   border: 1px solid #d1d1d6;
   font-size: 14px;
-  box-sizing: border-box;
+}
+#apiKeyInput {
+  user-select: none;
 }
 button {
   border-radius: 999px;
@@ -109,7 +115,11 @@ button {
 .json-number { color: #188038; }
 .json-boolean { color: #e37400; }
 .json-null { color: #80868b; }
-
+.warning {
+  color: #ff3b30;
+  font-size: 12px;
+  margin-top: 4px;
+}
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -142,11 +152,11 @@ button {
 
 <div class="main">
 
-  <!-- APIキー & 種別 -->
+  <!-- 設定 -->
   <div class="card">
     <div class="card-title">設定</div>
     <label>Gemini API キー</label>
-    <input type="text" id="apiKeyInput" placeholder="AIza...">
+    <input type="password" id="apiKeyInput" placeholder="AIza..." autocomplete="off">
     <button class="btn-outline btn-block" id="saveApiKeyBtn">APIキーを保存</button>
 
     <label>ドキュメント種別</label>
@@ -176,6 +186,7 @@ button {
   <div class="card">
     <div class="card-title">OCR 結果</div>
     <div id="resultBox">まだ結果はありません。</div>
+    <div id="receiptWarning" class="warning"></div>
     <button class="btn-primary btn-block" id="saveBtn">この結果を保存</button>
   </div>
 
@@ -202,14 +213,57 @@ button {
 <script>
 let cropper = null;
 let lastImageDataUrl = null;
+let lastParsedJson = null;
 
-// APIキーのロード
+// 簡易暗号化（XOR＋Base64）
+const KEY = "takahiro-receipt-key";
+
+function xorEncrypt(str, key) {
+  let res = "";
+  for (let i = 0; i < str.length; i++) {
+    res += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return btoa(res);
+}
+function xorDecrypt(enc, key) {
+  try {
+    const decoded = atob(enc);
+    let res = "";
+    for (let i = 0; i < decoded.length; i++) {
+      res += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return res;
+  } catch {
+    return "";
+  }
+}
+
+// APIキーのロード（再表示はしない）
 const apiKeyInput = document.getElementById("apiKeyInput");
-apiKeyInput.value = localStorage.getItem("geminiApiKey") || "";
+const storedKeyEnc = localStorage.getItem("geminiApiKeyEnc");
+if (storedKeyEnc) {
+  apiKeyInput.value = "********"; // 中身は見せない
+}
+apiKeyInput.addEventListener("copy", e => e.preventDefault());
+apiKeyInput.addEventListener("cut", e => e.preventDefault());
+
 document.getElementById("saveApiKeyBtn").onclick = () => {
-  localStorage.setItem("geminiApiKey", apiKeyInput.value.trim());
-  alert("APIキーを保存しました");
+  const val = apiKeyInput.value.trim();
+  if (!val || val === "********") {
+    alert("新しい APIキー を入力してください。");
+    return;
+  }
+  const enc = xorEncrypt(val, KEY);
+  localStorage.setItem("geminiApiKeyEnc", enc);
+  apiKeyInput.value = "********";
+  alert("APIキーを保存しました（再表示はできません）");
 };
+
+function getApiKey() {
+  const enc = localStorage.getItem("geminiApiKeyEnc");
+  if (!enc) return "";
+  return xorDecrypt(enc, KEY);
+}
 
 /* 画像選択 */
 document.getElementById("fileInput").addEventListener("change", e => {
@@ -243,7 +297,7 @@ function loadImage(file) {
 /* OCR 実行 */
 document.getElementById("cropOkBtn").onclick = async () => {
   if (!cropper) return;
-  const apiKey = apiKeyInput.value.trim();
+  const apiKey = getApiKey();
   if (!apiKey) {
     alert("先に APIキー を入力・保存してください。");
     return;
@@ -256,49 +310,132 @@ document.getElementById("cropOkBtn").onclick = async () => {
   const docType = document.getElementById("docType").value;
   const text = await callGeminiOCR(base64, apiKey, docType);
   const json = extractJson(text);
+  lastParsedJson = json;
 
-  document.getElementById("resultBox").innerHTML = json
-    ? highlightJson(JSON.stringify(json, null, 2))
-    : "JSON を抽出できませんでした。\n\n" + text;
+  const resultBox = document.getElementById("resultBox");
+  const warn = document.getElementById("receiptWarning");
+  warn.textContent = "";
+
+  if (json) {
+    if (docType === "receipt") {
+      const check = validateReceipt(json);
+      if (!check.ok) {
+        warn.textContent = "⚠ 合計金額が一致しません（計算値: " +
+          check.calcTotal + " / JSON: " + json.total_amount + "）";
+      }
+      resultBox.innerHTML = highlightJson(JSON.stringify(json, null, 2));
+    } else {
+      resultBox.innerHTML = highlightJson(JSON.stringify(json, null, 2));
+    }
+  } else {
+    resultBox.textContent = "JSON を抽出できませんでした。\n\n" + text;
+  }
 };
 
-/* Gemini OCR（種別ごとにプロンプト最適化） */
-function buildPrompt(docType) {
-  if (docType === "receipt") {
-    return `これはレシートの画像です。以下のような JSON だけを返してください。
+/* プロンプト生成 */
+function buildReceiptPrompt() {
+  return `あなたはレシート解析の専門家です。
+以下の画像から情報を抽出し、次の JSON 形式だけを返してください。
+余計な文章は一切書かないでください。
+
 {
   "type": "receipt",
-  "store_name": "...",
-  "date": "...",
-  "total_amount": 1234,
+  "store_name": "",
+  "date": "",
+  "payment_method": "",
   "items": [
-    {"name": "...", "price": 123, "qty": 1}
-  ]
-}`;
-  } else if (docType === "business_card") {
-    return `これは名刺の画像です。以下のような JSON だけを返してください。
+    {
+      "name": "",
+      "qty": 1,
+      "unit_price": 0,
+      "subtotal": 0,
+      "category": "",
+      "subcategory": ""
+    }
+  ],
+  "subtotal_amount": 0,
+  "tax_amount": 0,
+  "total_amount": 0,
+  "total_check": true
+}
+
+【抽出ルール】
+- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）
+- 日付は YYYY-MM-DD 形式に統一
+- 支払い方法は推定（例：クレジットカード / PayPay / 現金）
+- items[].subtotal = qty × unit_price
+- subtotal_amount = items[].subtotal の合計
+- total_check = (subtotal_amount + tax_amount == total_amount)
+
+【カテゴリ分類ルール】
+以下の分類の中から最も適切なカテゴリとサブカテゴリを推定して記入してください。
+
+■ 食品
+- 生鮮
+- 加工
+- 飲料
+
+■ 日用品
+- 洗剤
+- 紙類
+- 雑貨
+
+■ 外食
+- ファストフード
+- レストラン
+
+■ その他の分類
+- ガソリン
+- 医療・薬
+- 交通
+- 娯楽
+- 衣類
+- 住居
+- その他
+
+【注意】
+- JSON 以外の文章は絶対に書かない
+- 読み取れない場合は空欄にする`;
+}
+
+function buildBusinessCardPrompt() {
+  return `これは名刺の画像です。以下の JSON だけを返してください。
+
 {
   "type": "business_card",
-  "name": "...",
-  "company": "...",
-  "title": "...",
-  "phone": "...",
-  "email": "...",
-  "address": "..."
-}`;
-  } else if (docType === "license_plate") {
-    return `これは車のナンバープレートの画像です。以下のような JSON だけを返してください。
+  "name": "",
+  "company": "",
+  "title": "",
+  "phone": "",
+  "email": "",
+  "address": ""
+}
+
+JSON 以外の文章は書かないでください。`;
+}
+
+function buildLicensePlatePrompt() {
+  return `これは車のナンバープレートの画像です。以下の JSON だけを返してください。
+
 {
   "type": "license_plate",
-  "region": "...",
-  "class_number": "...",
-  "hiragana": "...",
-  "number": "...."
-}`;
-  }
+  "region": "",
+  "class_number": "",
+  "hiragana": "",
+  "number": ""
+}
+
+JSON 以外の文章は書かないでください。`;
+}
+
+function buildPrompt(docType) {
+  if (docType === "receipt") return buildReceiptPrompt();
+  if (docType === "business_card") return buildBusinessCardPrompt();
+  if (docType === "license_plate") return buildLicensePlatePrompt();
   return "画像から情報を JSON だけで返してください。";
 }
 
+/* Gemini OCR */
 async function callGeminiOCR(base64, apiKey, docType) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
   const prompt = buildPrompt(docType);
@@ -342,7 +479,26 @@ function highlightJson(json) {
     .replace(/\b([0-9]+)\b/g, '<span class="json-number">$1</span>');
 }
 
-/* 保存（画像＋JSONテキスト＋種別） */
+/* レシート検証 */
+function validateReceipt(json) {
+  if (!json.items || !Array.isArray(json.items)) return { ok: true, calcTotal: 0 };
+  let subtotal = 0;
+  json.items.forEach(it => {
+    const qty = Number(it.qty || 0);
+    const unit = Number(it.unit_price || 0);
+    const sub = qty * unit;
+    it.subtotal = sub;
+    subtotal += sub;
+  });
+  json.subtotal_amount = subtotal;
+  const tax = Number(json.tax_amount || 0);
+  const total = Number(json.total_amount || 0);
+  const calcTotal = subtotal + tax;
+  json.total_check = (calcTotal === total);
+  return { ok: json.total_check, calcTotal };
+}
+
+/* 保存（画像＋JSON＋種別） */
 document.getElementById("saveBtn").onclick = () => {
   const text = document.getElementById("resultBox").innerText;
   if (!text.trim()) return;
@@ -353,7 +509,8 @@ document.getElementById("saveBtn").onclick = () => {
   list.push({
     id,
     type: docType,
-    data: text,
+    json: lastParsedJson || null,
+    raw: text,
     time: Date.now(),
     image: lastImageDataUrl || null
   });
@@ -372,12 +529,14 @@ document.getElementById("zipBtn").onclick = async () => {
 
   list.forEach((item, idx) => {
     const baseName = `${idx + 1}_${item.type}_${item.id}`;
-    // JSONテキスト
-    zip.file(`${baseName}.txt`, item.data || "");
-    // 画像
+    const folder = zip.folder(baseName);
+    folder.file("data.txt", item.raw || "");
+    if (item.json) {
+      folder.file("data.json", JSON.stringify(item.json, null, 2));
+    }
     if (item.image && item.image.startsWith("data:image")) {
       const base64 = item.image.split(",")[1];
-      zip.file(`${baseName}.jpg`, base64, { base64: true });
+      folder.file("image.jpg", base64, { base64: true });
     }
   });
 
