@@ -269,6 +269,23 @@ function renderList() {
       const total = r.total_amount != null ? r.total_amount : "";
       tdSummary.textContent = store + (total !== "" ? " / 合計: " + total : "");
     } else {
+    
+         if (item.type === "business_card" && item.json) {
+         const r = item.json;
+         const store = r.company || "(社名不明)";
+         const total = r.name || "(氏名不明)";
+         tdSummary.textContent = store + " / " + total;
+       } else {
+               if (item.type === "license_plate" && item.json) {
+               const r = item.json;
+               const store = r.region + r.class_number;
+               const total = r.hiragana + r.number;
+               tdSummary.textContent =  store + " / " + total;
+       } 
+    
+    
+    
+    
       tdSummary.textContent = (item.raw || "").slice(0, 60);
     }
 
