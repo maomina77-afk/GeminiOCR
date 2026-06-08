@@ -300,11 +300,12 @@ function buildReceiptPrompt() {
 - 日付は YYYY-MM-DD 形式に統一
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
-【金額計算ルール（重要）】
+【金額計算ルール（必ず守ること）】
 - discount は「値引き額」を正の数で記入する
-- subtotal は必ず「qty × unit_price − discount」で計算した値を入れる
-- AI が計算して subtotal に反映させること（絶対に空欄にしない）
-- subtotal_amount は items[].subtotal の合計
+- **subtotal は必ず AI が計算して数値を入れること**
+- **subtotal = qty × unit_price − discount を必ず実行すること**
+- subtotal を空欄にしてはいけない
+- subtotal_amount = items[].subtotal の合計
 - total_check = (subtotal_amount + tax_amount == total_amount)
 
 【カテゴリ分類ルール】
