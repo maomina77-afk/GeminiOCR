@@ -269,7 +269,52 @@ document.getElementById("cropOkBtn").onclick = async () => {
   }
 };
 
-function buildReceiptPrompt() { return `あなたはレシート解析の専門家です。以下の画像から情報を抽出し、次の JSON 形式だけを返してください。余計な文章は一切書かないでください。\n\n{\n  "type": "receipt",\n  "store_name": "",\n  "date": "",\n  "payment_method": "",\n  "items": [\n    {\n      "name": "",\n      "qty": 1,\n      "unit_price": 0,\n      "discount": 0,\n      "subtotal": 0,\n      "category": "",\n      "subcategory": ""\n    }\n  ],\n  "subtotal_amount": 0,\n  "tax_amount": 0,\n  "total_amount": 0,\n  "total_check": true\n}\n\n【抽出ルール】\n- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）\n- 日付は YYYY-MM-DD 形式に統一\n- 支払い方法は推定（例：クレジットカード / PayPay / 現金）\n- items[].subtotal = qty × unit_price - discount\n- subtotal_amount = items[].subtotal の合計\n- total_check = (subtotal_amount + tax_amount == total_amount)\n\n【カテゴリ分類ルール】\n以下の分類を参考に最も適切なカテゴリとサブカテゴリを推定して記入してください。\n\n■ 食品\n- 生鮮\n- 加工\n- 飲料\n\n■ 日用品\n- 洗剤\n- 紙類\n- 雑貨\n\n■ 外食\n- ファストフード\n- レストラン\n\n■ その他の分類\n- ガソリン\n- 医療・薬\n- 交通\n- 娯楽\n- 衣類\n- 住居\n- その他\n\n【注意】\n- JSON 以外の文章は絶対に書かない\n- 読み取れない場合は空欄にする`; }
+function buildReceiptPrompt() {
+  return `
+あなたはレシート解析の専門家です。以下の画像から情報を抽出し、次の JSON 形式だけを返してください。余計な文章は一切書かないでください。
+
+{
+  "type": "receipt",
+  "store_name": "",
+  "date": "",
+  "payment_method": "",
+  "items": [
+    {
+      "name": "",
+      "qty": 1,
+      "unit_price": 0,
+      "discount": 0,
+      "subtotal": 0,
+      "category": "",
+      "subcategory": ""
+    }
+  ],
+  "subtotal_amount": 0,
+  "tax_amount": 0,
+  "total_amount": 0,
+  "total_check": true
+}
+
+【抽出ルール】
+- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）
+- 日付は YYYY-MM-DD 形式に統一
+- 支払い方法は推定（例：クレジットカード / PayPay / 現金）
+
+【金額計算ルール（重要）】
+- discount は「値引き額」を正の数で記入する
+- subtotal は必ず「qty × unit_price − discount」で計算した値を入れる
+- AI が計算して subtotal に反映させること（絶対に空欄にしない）
+- subtotal_amount は items[].subtotal の合計
+- total_check = (subtotal_amount + tax_amount == total_amount)
+
+【カテゴリ分類ルール】
+（省略：あなたの元の内容をそのまま入れる）
+
+【注意】
+- JSON 以外の文章は絶対に書かない
+- 読み取れない場合は空欄にする
+`;
+}
 function buildBusinessCardPrompt() { return `これは名刺の画像です。以下の JSON だけを返してください。\n\n{\n  "type": "business_card",\n  "name": "",\n  "company": "",\n  "title": "",\n  "phone": "",\n  "email": "",\n  "address": ""\n}\n\nJSON 以外の文章は書かないでください。`; }
 function buildLicensePlatePrompt() { return `これは車のナンバープレートの画像です。以下の JSON だけを返してください。\n\n{\n  "type": "license_plate",\n  "region": "",\n  "class_number": "",\n  "hiragana": "",\n  "number": ""\n}\n\nJSON 以外の文章は書かないでください。`; }
 function buildPrompt(docType) { if (docType === "receipt") return buildReceiptPrompt(); if (docType === "business_card") return buildBusinessCardPrompt(); if (docType === "license_plate") return buildLicensePlatePrompt(); return "画像から情報を JSON だけで返してください。"; }
