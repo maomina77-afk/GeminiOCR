@@ -373,8 +373,15 @@ function openJsonEditor(item) {
 function validateReceipt(json) {
   if (!json.items || !Array.isArray(json.items)) return { ok: true, calcTotal: 0 };
   let subtotal = 0;
-  json.items.forEach(it => { const qty = Number(it.qty || 0); const unit = Number(it.unit_price || 0); const sub = qty * unit; it.subtotal = sub; subtotal += sub; });
-  json.subtotal_amount = subtotal;
+  json.items.forEach(it => { 
+  const qty = Number(it.qty || 0); 
+  const unit = Number(it.unit_price || 0); 
+  const disc = Number(it.discount || 0); // ★ 値引き額（discount）を数値として取得
+  const sub = (qty * unit) - disc;       // ★ 単価×数量 から値引き額を差し引く
+  it.subtotal = sub; 
+  subtotal += sub; 
+});
+ json.subtotal_amount = subtotal;
   const tax = Number(json.tax_amount || 0); const total = Number(json.total_amount || 0); const calcTotal = subtotal + tax; json.total_check = (calcTotal === total);
   return { ok: json.total_check, calcTotal };
 }

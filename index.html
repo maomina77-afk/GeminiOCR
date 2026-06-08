@@ -229,9 +229,14 @@ function loadImage(file) {
     lastImageDataUrl = e.target.result;
     img.style.display = "block";
     document.getElementById("cropArea").style.display = "block";
-    if (cropper) cropper.destroy();
-    cropper = new Cropper(img, { aspectRatio: NaN, viewMode: 1 });
-  };
+if (cropper) cropper.destroy();
+cropper = new Cropper(img, {
+  aspectRatio: NaN,
+  viewMode: 1,
+  autoCropArea: 0.8,       // 初期切り抜き枠をコンテナ（画面幅）の8割にする
+  cropBoxResizable: false, // 枠のサイズ変更を無効化（大きさを固定）
+  dragMode: 'move'         // 画像や枠の移動をスムーズにする
+});
   reader.readAsDataURL(file);
 }
 
@@ -301,12 +306,11 @@ function buildReceiptPrompt() {
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
 【金額計算ルール（必ず守ること）】
-- discount は「値引き額」を正の数で記入する
-- **subtotal は必ず AI が計算して数値を入れること**
-- **subtotal = qty × unit_price − discount を必ず実行すること**
+- discount は「値引き額」を正の数で記入する（例：100円引きなら 100）
+- **subtotal は値引き額を反映させて必ず AI が計算して数値を入れること**
+- **subtotal = (qty × unit_price) − discount を必ず実行すること**
 - subtotal を空欄にしてはいけない
-- subtotal_amount = items[].subtotal の合計
-- total_check = (subtotal_amount + tax_amount == total_amount)
+- 計算例：単価500円、数量1、値引き100円の場合、discountは100、subtotalは400となります（レシートに記載の小計が500円であっても、ここには値引き後の400を入れてください）。
 
 【カテゴリ分類ルール】
 （省略：あなたの元の内容をそのまま入れる）
@@ -335,8 +339,15 @@ function highlightJson(json) { return json.replace(/"(.*?)":/g, '<span class="js
 function validateReceipt(json) {
   if (!json.items || !Array.isArray(json.items)) return { ok: true, calcTotal: 0 };
   let subtotal = 0;
-  json.items.forEach(it => { const qty = Number(it.qty || 0); const unit = Number(it.unit_price || 0); const sub = qty * unit; it.subtotal = sub; subtotal += sub; });
-  json.subtotal_amount = subtotal;
+ json.items.forEach(it => { 
+  const qty = Number(it.qty || 0); 
+  const unit = Number(it.unit_price || 0); 
+  const disc = Number(it.discount || 0); // ★ 値引き額（discount）を数値として取得
+  const sub = (qty * unit) - disc;       // ★ 単価×数量 から値引き額を差し引く
+  it.subtotal = sub; 
+  subtotal += sub; 
+});
+ json.subtotal_amount = subtotal;
   const tax = Number(json.tax_amount || 0); const total = Number(json.total_amount || 0); const calcTotal = subtotal + tax; json.total_check = (calcTotal === total);
   return { ok: json.total_check, calcTotal };
 }
