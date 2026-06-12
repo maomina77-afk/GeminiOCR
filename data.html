@@ -394,12 +394,29 @@ document.getElementById("excelBtn").onclick = () => {
     if (item.type !== "receipt" || !item.json) return;
     const r = item.json;
     const check = validateReceipt(r);
-    const date = r.date || ""; const store = r.store_name || ""; const pay = r.payment_method || ""; const total = r.total_amount || 0; const subtotal = r.subtotal_amount || 0; const tax = r.tax_amount || 0;
+    const date = r.date || ""; 
+const store = r.store_name || ""; 
+const tNum = r.registration_number || ""; // 追加
+const officialName = r.official_company_name || ""; // 追加
+const pay = r.payment_method || ""; 
+const total = r.total_amount || 0; 
+const subtotal = r.subtotal_amount || 0; 
+const tax = r.tax_amount || 0;
     const rate = subtotal > 0 ? Math.round((tax / subtotal) * 1000) / 10 : "";
     const items = Array.isArray(r.items) ? r.items : [];
     items.forEach(it => { rowsKakeibo.push({ 日付: date, 店名: store, カテゴリ: it.category || "", サブカテゴリ: it.subcategory || "", 品名: it.name || "", 数量: it.qty || 0, 単価: it.unit_price || 0, 小計: it.subtotal || 0, 支払い方法: pay, 合計金額: total, メモ: "" }); });
-    rowsReceipts.push({ 日付: date, 店名: store, 支払い方法: pay, 小計: subtotal, 税額: tax, 税率_推定: rate, 合計金額: total, 合計チェック: r.total_check ? "OK" : "NG" });
-  });
+   rowsReceipts.push({ 
+  日付: date, 
+  店名: store, 
+  正式社名: officialName, 
+  登録番号: tNum, 
+  支払い方法: pay, 
+  小計: subtotal, 
+  税額: tax, 
+  税率_推定: rate, 
+  合計金額: total, 
+  合計チェック: r.total_check ? "OK" : "NG" 
+});
   if (rowsKakeibo.length === 0) { alert("レシートの JSON データがありません"); return; }
   const wb = XLSX.utils.book_new();
   const wsK = XLSX.utils.json_to_sheet(rowsKakeibo); XLSX.utils.book_append_sheet(wb, wsK, "家計簿");

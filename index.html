@@ -122,10 +122,34 @@ details[open] summary { margin-bottom: 16px; }
 .nav-item.active { color: var(--primary); }
 .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
 .nav-text { font-size: 11px; font-weight: 500; }
+
+/* トリミングエリアのコンテナサイズを制限 */
+.img-container {
+  width: 100%;
+  max-height: 55vh; /* 画面の高さの55%を上限とする */
+  overflow: hidden;
+  background-color: #000;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.img-container img {
+  display: block;
+  max-width: 100%;
+}
 </style>
 </head>
 <body>
 <header>OCR Capture</header>
+
+<div style="margin: 16px; padding: 16px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+  <label for="ntaApiKey" style="font-size: 14px; font-weight: bold; color: var(--text-main);">国税庁APIキー設定</label>
+  <div style="display: flex; gap: 8px; margin-top: 8px;">
+    <input type="password" id="ntaApiKey" placeholder="APIキーを入力 (表示されません)" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px;">
+    <button id="saveApiKeyBtn" style="padding: 10px 20px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">保存</button>
+  </div>
+</div>
+
 
 <div class="main">
 
@@ -186,6 +210,22 @@ details[open] summary { margin-bottom: 16px; }
 </div>
 
 <script>
+
+// ページ読み込み時に保存済みのAPIキーをセット
+const apiKeyInput = document.getElementById("ntaApiKey");
+apiKeyInput.value = localStorage.getItem("ntaApiKey") || "";
+
+document.getElementById("saveApiKeyBtn").onclick = () => {
+  const key = apiKeyInput.value.trim();
+  if (key) {
+    localStorage.setItem("ntaApiKey", key);
+    alert("APIキーを保存しました");
+  } else {
+    localStorage.removeItem("ntaApiKey");
+    alert("APIキーを削除しました");
+  }
+};
+
 // --- 既存のスクリプトは変更なし（そのまま配置してください） ---
 let cropper = null;
 let lastImageDataUrl = null;
@@ -230,13 +270,19 @@ function loadImage(file) {
     img.style.display = "block";
     document.getElementById("cropArea").style.display = "block";
     if (cropper) cropper.destroy();
-    cropper = new Cropper(img, {
-    aspectRatio: NaN,
-  viewMode: 1,
-  autoCropArea: 0.8,       // 初期切り抜き枠をコンテナ（画面幅）の8割にする
-  cropBoxResizable: false, // 枠のサイズ変更を無効化（大きさを固定）
-  dragMode: 'move'         // 画像や枠の移動をスムーズにする
-    });
+// cropper = new Cropper(imageElement, { ... }) の部分を以下のように変更
+cropper = new Cropper(imageElement, {
+  viewMode: 1,       // 画像がコンテナの外に出ないように制限
+  dragMode: 'move',  // スワイプで画像自体を動かせるようにする（スマホ向け）
+  autoCropArea: 0.8,
+  responsive: true,
+  restore: true,
+  guides: true,
+  highlight: false,
+  cropBoxMovable: true,
+  cropBoxResizable: true,
+  toggleDragModeOnDblclick: false,
+});
   };
   reader.readAsDataURL(file);
 }
@@ -281,7 +327,6 @@ function buildReceiptPrompt() {
 
 {
   "type": "receipt",
-  "registration_number": "",
   "store_name": "",
   "date": "",
   "payment_method": "",
@@ -303,8 +348,9 @@ function buildReceiptPrompt() {
 }
 
 【抽出ルール】
-- 登録番号はアルファベットの「T」と13桁の数字の部分です。
-- 店名は登録番号から正式名称を検索、不明な場合はレシートに記載のブランド名と店名(例：フレンドマート 米原駅前店 / SEIYU 野洲)
+- store_name: レシートに記載のブランド名と店名を結合した文字列（例："フレンドマート 米原駅前店"）
+- registration_number: "T"から始まる13桁の登録番号
+- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）
 - 日付は YYYY-MM-DD 形式に統一
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
@@ -361,6 +407,30 @@ async function callGeminiOCR(base64, apiKey, docType) {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
 }
 
+// 国税庁APIを呼び出す関数
+async function fetchOfficialCompanyName(tNumber) {
+  const apiKey = localStorage.getItem("ntaApiKey");
+  if (!apiKey) return null;
+
+  // "T"を除去し、数字13桁のみを抽出
+  const numOnly = tNumber.replace(/[^0-9]/g, '');
+  if (numOnly.length !== 13) return null;
+
+  try {
+    const url = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${numOnly}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    // 取得成功時、announcement配列の1件目から社名(name)を取得
+    if (data && data.announcement && data.announcement.length > 0) {
+      return data.announcement[0].name;
+    }
+  } catch (error) {
+    console.error("国税庁API通信エラー:", error);
+  }
+  return null;
+}
+
 function extractJson(text) { const match = text.match(/\{[\s\S]*\}/); if (!match) return null; try { return JSON.parse(match[0]); } catch { return null; } }
 function highlightJson(json) { return json.replace(/"(.*?)":/g, '<span class="json-key">"$1"</span>:').replace(/"(.*?)"/g, '<span class="json-string">"$1"</span>').replace(/\b(true|false)\b/g, '<span class="json-boolean">$1</span>').replace(/\b(null)\b/g, '<span class="json-null">$1</span>').replace(/\b([0-9]+)\b/g, '<span class="json-number">$1</span>'); }
 
@@ -387,6 +457,17 @@ document.getElementById("saveBtn").onclick = () => {
   const list = JSON.parse(localStorage.getItem("ocrData") || "[]");
   const id = Date.now().toString();
   list.push({ id, type: docType, json: lastParsedJson || null, raw: text, time: Date.now(), image: lastImageDataUrl || null });
+ 
+// 例：jsonがOCRから返ってきたオブジェクトであるとする
+if (json.registration_number) {
+  // 正式社名を取得して追加
+  const officialName = await fetchOfficialCompanyName(json.registration_number);
+  if (officialName) {
+    json.official_company_name = officialName;
+  }
+}
+// この後に localStorage.setItem("ocrData", ...) で保存する処理を続けます 
+ 
   localStorage.setItem("ocrData", JSON.stringify(list));
   alert("保存しました");
 };
