@@ -281,6 +281,7 @@ function buildReceiptPrompt() {
 
 {
   "type": "receipt",
+  "registration_number": "",
   "store_name": "",
   "date": "",
   "payment_method": "",
@@ -302,7 +303,8 @@ function buildReceiptPrompt() {
 }
 
 【抽出ルール】
-- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）
+- 登録番号はアルファベットの「T」と13桁の数字の部分です。
+- 店名は登録番号から正式名称を検索、不明な場合はレシートに記載のブランド名と店名(例：フレンドマート 米原駅前店 / SEIYU 野洲)
 - 日付は YYYY-MM-DD 形式に統一
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
