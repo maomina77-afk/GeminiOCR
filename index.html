@@ -462,6 +462,7 @@ async function fetchExcelApiCompanyName(tNumber) {
     const response = await fetch(proxyUrl);
     if (response.ok) {
       const text = await response.text();
+      alert(text);
       // エラー文字が含まれていない正常なケースのみ社名として返す
       if (text && !text.includes("#N/A") && !text.includes("Error") && text.trim() !== "") {
         return text.trim();
