@@ -265,9 +265,20 @@ function renderList() {
     const summaryDiv = document.createElement("div");
     summaryDiv.className = "summary-text";
 
-    if (item.type === "receipt" && item.json) {
-      // 正式社名があれば優先表示
-      const displayName = item.json.official_company_name || item.json.store_name || "(店名不明)";
+if (item.type === "receipt" && item.json) {
+      // 正式社名と店名の表示ロジックを構成
+      let displayName = "";
+      const official = item.json.official_company_name;
+      const store = item.json.store_name;
+
+      if (official && store) {
+        // 両方ある場合は「正式社名（店名）」とする（※index.html側で結合していない場合の保険）
+        // もしすでにindex.html側で結合されている場合は、重複を防ぐため store をそのまま使います
+        displayName = store.includes(official) ? store : `${official} ${store}`;
+      } else {
+        displayName = official || store || "(店名不明)";
+      }
+
       summaryDiv.innerHTML = `<div class="summary-title">${displayName}</div><div class="summary-sub">合計: ¥${item.json.total_amount || 0}</div>`;
     } else if (item.type === "business_card" && item.json) {
       summaryDiv.innerHTML = `<div class="summary-title">${item.json.company || "(会社不明)"}</div><div class="summary-sub">${item.json.name || "(氏名不明)"}</div>`;
