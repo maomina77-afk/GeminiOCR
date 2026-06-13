@@ -286,6 +286,29 @@ function loadImage(file) {
   reader.readAsDataURL(file);
 }
 
+// Excel APIを呼び出す関数（新規追加）
+async function fetchExcelApiCompanyName(tNumber) {
+  const numOnly = tNumber.replace(/[^0-9]/g, '');
+  if (numOnly.length !== 13) return null;
+
+  try {
+    // Excel APIの会社名変換APIを呼び出し
+    const url = `https://api.excelapi.org/company/name?id=${numOnly}`;
+    const response = await fetch(url);
+    
+    if (response.ok) {
+      const text = await response.text();
+      // 該当データがない場合は「#N/A」や空文字が返るためチェック
+      if (text && !text.includes("#N/A") && text.trim() !== "") {
+        return text.trim();
+      }
+    }
+  } catch (error) {
+    console.error("Excel API通信エラー:", error);
+  }
+  return null;
+}
+
 // 国税庁APIを呼び出す関数
 async function fetchOfficialCompanyName(tNumber) {
   const apiKey = localStorage.getItem("ntaApiKey");
@@ -321,10 +344,20 @@ document.getElementById("cropOkBtn").onclick = async () => {
   const text = await callGeminiOCR(base64, apiKey, docType);
   const json = extractJson(text);
 
-  // 取得したJSONに登録番号がある場合、正式社名を取得して追加
+// 取得したJSONに登録番号がある場合、正式社名を取得して追加
   if (json && json.type === "receipt" && json.registration_number) {
-    document.getElementById("resultBox").innerText = "読取完了。国税庁APIから正式社名を取得中...";
-    const officialName = await fetchOfficialCompanyName(json.registration_number);
+    document.getElementById("resultBox").innerText = "読取完了。会社名を検索中...";
+    
+    // 1. まずはExcel APIで検索
+    let officialName = await fetchExcelApiCompanyName(json.registration_number);
+    
+    // 2. Excel APIで見つからなかった場合、国税庁APIで検索
+    if (!officialName) {
+      document.getElementById("resultBox").innerText = "Excel APIで見つからないため、国税庁APIから取得中...";
+      officialName = await fetchOfficialCompanyName(json.registration_number);
+    }
+    
+    // 見つかった名前をJSONにセット
     if (officialName) {
       json.official_company_name = officialName;
     }
