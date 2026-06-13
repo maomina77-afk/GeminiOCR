@@ -274,7 +274,7 @@ if (item.type === "receipt" && item.json) {
       if (official && store) {
         // 両方ある場合は「正式社名（店名）」とする（※index.html側で結合していない場合の保険）
         // もしすでにindex.html側で結合されている場合は、重複を防ぐため store をそのまま使います
-        displayName = store.includes(official) ? store : ` "(" & ${official} & ")" & ${store}`;
+        displayName = store.includes(official) ? store : ` "(" + ${official} + ")" & ${store}`;
       } else {
         displayName = official || store || "(店名不明)";
       }
