@@ -445,22 +445,31 @@ function createThumbnail(canvas, maxWidth = 200) {
     thumbCanvas.height = dstHeight;
     const ctx = thumbCanvas.getContext("2d");
     ctx.drawImage(canvas, 0, 0, dstWidth, dstHeight);
-    resolve(thumbCanvas.toDataURL("image/jpeg", 0.4)); // 画質を0.4に下げて超軽量化
+    resolve(thumbCanvas.toDataURL("image/jpeg", 0.4));
   });
 }
 
-// ---------- 外部API連携 ----------
+// ---------- 外部API連携 (CORSプロキシ対応) ----------
 async function fetchExcelApiCompanyName(tNumber) {
   const numOnly = tNumber.replace(/[^0-9]/g, '');
   if (numOnly.length !== 13) return null;
+  
   try {
-    const url = `https://api.excelapi.org/company/name?id=${numOnly}`;
-    const response = await fetch(url);
+    // ExcelAPIはブラウザからの直接通信（CORS）をブロックするため、プロキシを経由する
+    const targetUrl = `https://api.excelapi.org/company/name?id=${numOnly}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    
+    const response = await fetch(proxyUrl);
     if (response.ok) {
       const text = await response.text();
-      if (text && !text.includes("#N/A") && text.trim() !== "") return text.trim();
+      // エラー文字が含まれていない正常なケースのみ社名として返す
+      if (text && !text.includes("#N/A") && !text.includes("Error") && text.trim() !== "") {
+        return text.trim();
+      }
     }
-  } catch (error) { console.error("Excel APIエラー:", error); }
+  } catch (error) { 
+    console.error("Excel APIエラー:", error); 
+  }
   return null;
 }
 
@@ -469,12 +478,20 @@ async function fetchOfficialCompanyName(tNumber) {
   if (!apiKey) return null;
   const numOnly = tNumber.replace(/[^0-9]/g, '');
   if (numOnly.length !== 13) return null;
+  
   try {
-    const url = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${numOnly}`;
-    const response = await fetch(url);
+    // 国税庁APIも同様にCORSブロックを確実に回避するためプロキシを経由する
+    const targetUrl = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${numOnly}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    
+    const response = await fetch(proxyUrl);
     const data = await response.json();
-    if (data && data.announcement && data.announcement.length > 0) return data.announcement[0].name;
-  } catch (error) { console.error("国税庁APIエラー:", error); }
+    if (data && data.announcement && data.announcement.length > 0) {
+      return data.announcement[0].name;
+    }
+  } catch (error) { 
+    console.error("国税庁APIエラー:", error); 
+  }
   return null;
 }
 
@@ -498,11 +515,17 @@ document.getElementById("cropOkBtn").onclick = async () => {
 
     if (json && json.type === "receipt" && json.registration_number) {
       document.getElementById("resultBox").innerText = "読取完了。正式社名を検索中...";
+      
+      // 1. ExcelAPIから取得を試みる (プロキシ経由)
       let officialName = await fetchExcelApiCompanyName(json.registration_number);
+      
+      // 2. 失敗した場合は国税庁APIから取得 (プロキシ経由)
       if (!officialName) {
         document.getElementById("resultBox").innerText = "Excel APIで見つからないため、国税庁APIから取得中...";
         officialName = await fetchOfficialCompanyName(json.registration_number);
       }
+      
+      // 3. データに紐づける
       if (officialName) {
         json.official_company_name = officialName;
       }
