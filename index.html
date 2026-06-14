@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OCR Capture</title>
+<title>OCR Receipts & Data System</title>
 
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
@@ -41,7 +42,7 @@ header {
 }
 .main {
   padding: 16px;
-  padding-bottom: 80px;
+  padding-bottom: 100px;
   max-width: 600px;
   margin: 0 auto;
 }
@@ -100,6 +101,7 @@ button:active, .btn-label:active {
 .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(0, 122, 255, 0.3); }
 .btn-outline { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
 .btn-outline-gray { background: #fff; color: #555; border: 1.5px solid #d1d1d6; }
+.btn-danger { background: #fff; color: #ff3b30; border: 1px solid #ff3b30; }
 .button-row { display: flex; gap: 12px; }
 .button-row button, .button-row .btn-label { margin-bottom: 0; flex: 1; }
 
@@ -116,8 +118,9 @@ details { background: #f9f9fb; padding: 16px; border-radius: 12px; margin-bottom
 summary { font-weight: 600; cursor: pointer; color: var(--text-main); font-size: 14px; outline: none; }
 details[open] summary { margin-bottom: 16px; }
 
-.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border-top: 1px solid rgba(0,0,0,0.1); display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); }
-.nav-item { text-align: center; color: var(--text-sub); text-decoration: none; width: 100%; padding: 8px 0; }
+/* ボトムナビゲーション */
+.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border-top: 1px solid rgba(0,0,0,0.1); display: flex; justify-content: space-around; align-items: center; padding-bottom: env(safe-area-inset-bottom); z-index: 100; }
+.nav-item { text-align: center; color: var(--text-sub); text-decoration: none; width: 100%; padding: 8px 0; cursor: pointer; }
 .nav-item.active { color: var(--primary); }
 .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
 .nav-text { font-size: 11px; font-weight: 500; }
@@ -134,81 +137,219 @@ details[open] summary { margin-bottom: 16px; }
   display: block;
   max-width: 100%;
 }
+
+/* データ一覧用スタイル */
+.controls-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.search-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.search-row input, .search-row select {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e5ea;
+  font-size: 14px;
+  background: #f9f9fb;
+  margin-bottom: 0;
+}
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+.action-row button { margin-bottom: 0; }
+.list-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.list-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge.receipt { background: #fff0e0; color: #d97706; }
+.badge.business_card { background: #e0f0ff; color: #005bb5; }
+.badge.license_plate { background: #e5ffe0; color: #1e7e34; }
+.time-text {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+.list-card-body {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid #e5e5ea;
+  flex-shrink: 0;
+}
+.summary-text {
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.summary-title { font-weight: 600; margin-bottom: 4px; }
+.summary-sub { color: var(--text-sub); font-size: 13px; }
+.list-card-actions {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid #f2f2f7;
+  padding-top: 12px;
+}
+.list-card-actions button { margin-bottom: 0; }
+.json-editor {
+  width: 100%;
+  min-height: 200px;
+  border-radius: 8px;
+  border: 1px solid #d1d1d6;
+  padding: 10px;
+  font-size: 13px;
+  font-family: monospace;
+  background: #f9f9fb;
+}
+#imageModal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; z-index: 200; }
+#imageModal img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
 </style>
 </head>
 <body>
-<header>OCR Capture</header>
+<header id="headerTitle">OCR Capture</header>
 
 <div class="main">
+  
+  <div id="pageCapture" class="page-content">
+    <div style="margin-bottom: 16px; padding: 16px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+      <label for="ntaApiKey" style="font-size: 14px; font-weight: bold; color: var(--text-main);">国税庁APIキー設定</label>
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <input type="password" id="ntaApiKey" placeholder="APIキーを入力 (表示されません)" style="flex: 1; margin-bottom: 0;">
+        <button id="saveNtaApiKeyBtn" style="width: auto; margin-bottom: 0; padding: 10px 20px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-weight: bold;">保存</button>
+      </div>
+    </div>
 
-  <div style="margin-bottom: 16px; padding: 16px; background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-    <label for="ntaApiKey" style="font-size: 14px; font-weight: bold; color: var(--text-main);">国税庁APIキー設定</label>
-    <div style="display: flex; gap: 8px; margin-top: 8px;">
-      <input type="password" id="ntaApiKey" placeholder="APIキーを入力 (表示されません)" style="flex: 1; margin-bottom: 0;">
-      <button id="saveNtaApiKeyBtn" style="width: auto; margin-bottom: 0; padding: 10px 20px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-weight: bold;">保存</button>
+    <details>
+      <summary>⚙️ 初期設定 (Gemini APIキーなど)</summary>
+      <div style="margin-top:12px;">
+        <label>Gemini API キー</label>
+        <input type="password" id="apiKeyInput" placeholder="AIza..." autocomplete="off">
+        <button class="btn-outline-gray" id="saveApiKeyBtn">APIキーを保存</button>
+      </div>
+    </details>
+
+    <div class="card">
+      <div class="card-title">1. ドキュメントの読み込み</div>
+      <label>読み込む種類を選択してください</label>
+      <select id="docType">
+        <option value="receipt">🧾 レシート</option>
+        <option value="business_card">📇 名刺</option>
+        <option value="license_plate">🚗 ナンバープレート</option>
+      </select>
+      
+      <div class="button-row" style="margin-top: 8px;">
+        <label class="btn-outline btn-label" style="margin-bottom:0;">
+          📁 画像を選ぶ
+          <input type="file" id="fileInput" accept="image/*" style="display:none;">
+        </label>
+        <button class="btn-outline" id="cameraBtn">📷 カメラで撮影</button>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+      </div>
+    </div>
+
+    <div class="card" id="cropArea">
+      <div class="card-title">2. トリミング</div>
+      <p style="font-size:12px; color:#8e8e93; margin-top:0;">必要な部分だけを囲んでください</p>
+      <div class="img-container">
+        <img id="imageToCrop" src="">
+      </div>
+      <button class="btn-primary" id="cropOkBtn">✨ この範囲で OCR 実行</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">3. 結果（自動保存されます）</div>
+      <div id="resultBox">まだ結果はありません。</div>
+      <div id="receiptWarning" class="warning"></div>
     </div>
   </div>
 
-  <details>
-    <summary>⚙️ 初期設定 (Gemini APIキーなど)</summary>
-    <label>Gemini API キー</label>
-    <input type="password" id="apiKeyInput" placeholder="AIza..." autocomplete="off">
-    <button class="btn-outline-gray" id="saveApiKeyBtn">APIキーを保存</button>
-  </details>
-
-  <div class="card">
-    <div class="card-title">1. ドキュメントの読み込み</div>
-    <label>読み込む種類を選択してください</label>
-    <select id="docType">
-      <option value="receipt">🧾 レシート</option>
-      <option value="business_card">📇 名刺</option>
-      <option value="license_plate">🚗 ナンバープレート</option>
-    </select>
-    
-    <div class="button-row" style="margin-top: 8px;">
-      <label class="btn-outline btn-label" style="margin-bottom:0;">
-        📁 画像を選ぶ
-        <input type="file" id="fileInput" accept="image/*" style="display:none;">
-      </label>
-      <button class="btn-outline" id="cameraBtn">📷 カメラで撮影</button>
-      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+  <div id="pageData" class="page-content" style="display:none;">
+    <div class="controls-card">
+      <div class="search-row">
+        <select id="filterType">
+          <option value="">🏷 すべて</option>
+          <option value="receipt">レシート</option>
+          <option value="business_card">名刺</option>
+          <option value="license_plate">ナンバー</option>
+        </select>
+        <input type="text" id="searchText" placeholder="🔍 店名・品名で検索">
+      </div>
+      <div class="action-row">
+        <button class="btn-primary" id="excelBtn">📊 Excel</button>
+        <button class="btn-outline-gray" id="zipBtn">📦 ZIP</button>
+        <button class="btn-danger" id="clearBtn">🗑 全削除</button>
+      </div>
     </div>
-  </div>
 
-  <div class="card" id="cropArea">
-    <div class="card-title">2. トリミング</div>
-    <p style="font-size:12px; color:#8e8e93; margin-top:0;">必要な部分だけを囲んでください</p>
-    <div class="img-container">
-      <img id="imageToCrop" src="">
-    </div>
-    <button class="btn-primary" id="cropOkBtn">✨ この範囲で OCR 実行</button>
-  </div>
-
-  <div class="card">
-    <div class="card-title">3. 結果</div>
-    <div id="resultBox">まだ結果はありません。</div>
-    <div id="receiptWarning" class="warning"></div>
-    <div class="button-row" style="margin-top: 16px;">
-      <button class="btn-primary" id="saveBtn">💾 結果を保存</button>
-      <button class="btn-outline-gray" id="zipBtn">📦 ZIP出力</button>
-    </div>
+    <div id="listContainer"></div>
   </div>
 
 </div>
 
 <div class="bottom-nav">
-  <a href="index.html" class="nav-item active">
+  <div id="navCapture" class="nav-item active" onclick="switchPage('capture')">
     <span class="nav-icon">📷</span>
     <span class="nav-text">キャプチャ</span>
-  </a>
-  <a href="data.html" class="nav-item">
+  </div>
+  <div id="navData" class="nav-item" onclick="switchPage('data')">
     <span class="nav-icon">📂</span>
     <span class="nav-text">データ一覧</span>
-  </a>
+  </div>
+</div>
+
+<div id="imageModal">
+  <img id="modalImage" src="">
 </div>
 
 <script>
-// ---------- 国税庁APIキーの保存と読み込み ----------
+// ---------- 画面切り替え (SPA仕様) ----------
+// ★ここで画面の表示・非表示を制御しています
+function switchPage(page) {
+  if (page === 'capture') {
+    document.getElementById('pageCapture').style.display = 'block';
+    document.getElementById('pageData').style.display = 'none';
+    document.getElementById('navCapture').classList.add('active');
+    document.getElementById('navData').classList.remove('active');
+    document.getElementById('headerTitle').textContent = 'OCR Capture';
+  } else {
+    document.getElementById('pageCapture').style.display = 'none';
+    document.getElementById('pageData').style.display = 'block';
+    document.getElementById('navCapture').classList.remove('active');
+    document.getElementById('navData').classList.add('active');
+    document.getElementById('headerTitle').textContent = 'データ一覧';
+    loadData(); // ページ切り替え時に常に最新状態を読み込む
+  }
+}
+
+// ---------- 国税庁APIキー処理 ----------
 const ntaApiKeyInput = document.getElementById("ntaApiKey");
 ntaApiKeyInput.value = localStorage.getItem("ntaApiKey") || "";
 
@@ -223,10 +364,11 @@ document.getElementById("saveNtaApiKeyBtn").onclick = () => {
   }
 };
 
-// ---------- Gemini APIキーと共通処理 ----------
+// ---------- 暗号化・鍵処理 ----------
 let cropper = null;
 let lastImageDataUrl = null;
 let lastParsedJson = null;
+let dataList = [];
 
 const KEY = "takahiro-receipt-key";
 function xorEncrypt(str, key) { let res = ""; for (let i = 0; i < str.length; i++) { res += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length)); } return btoa(res); }
@@ -253,6 +395,7 @@ function getApiKey() {
   return xorDecrypt(enc, KEY);
 }
 
+// ---------- 画像読み込みロジック ----------
 document.getElementById("fileInput").addEventListener("change", e => { loadImage(e.target.files[0]); });
 document.getElementById("cameraBtn").onclick = () => { document.getElementById("cameraInput").click(); };
 document.getElementById("cameraInput").addEventListener("change", e => { loadImage(e.target.files[0]); });
@@ -265,6 +408,7 @@ function loadImage(file) {
     img.src = e.target.result;
     lastImageDataUrl = e.target.result;
     document.getElementById("cropArea").style.display = "block";
+    document.getElementById("resultBox").innerText = "まだ結果はありません。";
     
     if (cropper) cropper.destroy();
     
@@ -284,50 +428,58 @@ function loadImage(file) {
   reader.readAsDataURL(file);
 }
 
-// ----------------------------------------------------
-// ★追加：全角英数字を半角に変換するヘルパー関数
-// ----------------------------------------------------
+// サムネイル生成 (容量上限パンクを完全に回避するための圧縮ロジック)
+function createThumbnail(canvas, maxWidth = 200) {
+  return new Promise((resolve) => {
+    if (canvas.width <= maxWidth) {
+      resolve(canvas.toDataURL("image/jpeg", 0.4));
+      return;
+    }
+    const dstWidth = maxWidth;
+    const dstHeight = canvas.height * (maxWidth / canvas.width);
+    
+    const thumbCanvas = document.createElement("canvas");
+    thumbCanvas.width = dstWidth;
+    thumbCanvas.height = dstHeight;
+    const ctx = thumbCanvas.getContext("2d");
+    ctx.drawImage(canvas, 0, 0, dstWidth, dstHeight);
+    resolve(thumbCanvas.toDataURL("image/jpeg", 0.4));
+  });
+}
+
+// ---------- 全角英数字を半角に変換するヘルパー関数 ----------
 function toHalfWidth(str) {
   return str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
       return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
   });
 }
 
-// ----------------------------------------------------
-// ★修正：Excel APIを呼び出す関数（全角対応＋インボイス専用＋キャッシュ無効）
-// ----------------------------------------------------
+// ---------- 外部API連携 (CORSプロキシ対応) ----------
 async function fetchExcelApiCompanyName(tNumberRaw) {
   if (!tNumberRaw) return null;
-  // 全角を半角にし、数字以外を除去
   const half = toHalfWidth(tNumberRaw);
   const numOnly = half.replace(/[^0-9]/g, '');
   if (numOnly.length !== 13) return null;
 
-  const normalizedT = "T" + numOnly; // T付きの正確なインボイス番号に整形
+  const normalizedT = "T" + numOnly;
 
   try {
-    // 会社名専用ではなく、インボイス登録名専用のエンドポイント（/company/invoice_name）に変更
     const targetUrl = `https://api.excelapi.org/company/invoice_name?id=${normalizedT}`;
-    // プロキシのキャッシュエラーを回避するため disableCache=true を必ず付与
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&disableCache=true`;
     
     const response = await fetch(proxyUrl);
     if (response.ok) {
       const text = await response.text();
-      // 余分なエラー文字が含まれていないかチェック
       if (text && !text.includes("#N/A") && !text.includes("Error") && !text.includes("Not Found") && text.trim() !== "") {
         return text.trim();
       }
     }
-  } catch (error) {
-    console.error("Excel API通信エラー:", error);
+  } catch (error) { 
+    console.error("Excel API通信エラー:", error); 
   }
   return null;
 }
 
-// ----------------------------------------------------
-// ★修正：国税庁APIを呼び出す関数（全角対応＋キャッシュ無効）
-// ----------------------------------------------------
 async function fetchOfficialCompanyName(tNumberRaw) {
   const apiKey = localStorage.getItem("ntaApiKey");
   if (!apiKey) return null;
@@ -348,64 +500,87 @@ async function fetchOfficialCompanyName(tNumberRaw) {
         return data.announcement[0].name;
       }
     }
-  } catch (error) {
-    console.error("国税庁API通信エラー:", error);
+  } catch (error) { 
+    console.error("国税庁API通信エラー:", error); 
   }
   return null;
 }
 
+// ---------- トリミング決定・OCR解析・自動保存 ----------
 document.getElementById("cropOkBtn").onclick = async () => {
   if (!cropper) return;
   const apiKey = getApiKey();
   if (!apiKey) { alert("先に Gemini APIキー を入力・保存してください。"); return; }
-  const canvas = cropper.getCroppedCanvas();
-  const base64 = canvas.toDataURL("image/jpeg");
-  lastImageDataUrl = base64;
-  const docType = document.getElementById("docType").value;
   
+  const canvas = cropper.getCroppedCanvas();
+  const base64ForOCR = canvas.toDataURL("image/jpeg", 0.85); // OCR用は高精度
+  const thumbBase64 = await createThumbnail(canvas, 200);   // 保存用は軽量サムネイル
+  
+  const docType = document.getElementById("docType").value;
   document.getElementById("resultBox").innerText = "読取中...";
   
-  const text = await callGeminiOCR(base64, apiKey, docType);
-  const json = extractJson(text);
+  try {
+    const text = await callGeminiOCR(base64ForOCR, apiKey, docType);
+    const json = extractJson(text);
 
-  if (json && json.type === "receipt" && json.registration_number) {
-    document.getElementById("resultBox").innerText = "読取完了。会社名を検索中...";
-    
-    // 1. まずはExcel APIで検索（プロキシ経由）
-    let officialName = await fetchExcelApiCompanyName(json.registration_number);
-    
-    // 2. Excel APIで見つからなかった場合、国税庁APIで検索（プロキシ経由）
-    if (!officialName) {
-      document.getElementById("resultBox").innerText = "Excel APIで見つからないため、国税庁APIから取得中...";
-      officialName = await fetchOfficialCompanyName(json.registration_number);
-    }
-    
-    if (officialName) {
-      json.official_company_name = officialName;
-      if (json.store_name) {
-        json.store_name = `${officialName} ${json.store_name}`;
-      } else {
-        json.store_name = officialName;
+    if (json && json.type === "receipt" && json.registration_number) {
+      document.getElementById("resultBox").innerText = "読取完了。正式社名を検索中...";
+      
+      let officialName = await fetchExcelApiCompanyName(json.registration_number);
+      
+      if (!officialName) {
+        document.getElementById("resultBox").innerText = "Excel APIで見つからないため、国税庁APIから取得中...";
+        officialName = await fetchOfficialCompanyName(json.registration_number);
+      }
+      
+      if (officialName) {
+        json.official_company_name = officialName;
       }
     }
-  }
 
-  lastParsedJson = json;
+    lastParsedJson = json;
+    const resultBox = document.getElementById("resultBox");
+    const warn = document.getElementById("receiptWarning");
+    warn.textContent = "";
 
-  const resultBox = document.getElementById("resultBox");
-  const warn = document.getElementById("receiptWarning");
-  warn.textContent = "";
-
-  if (json) {
-    if (docType === "receipt") {
-      const check = validateReceipt(json);
-      if (!check.ok) {
-        warn.textContent = "⚠ 合計金額が一致しません（計算値: " + check.calcTotal + " / JSON: " + json.total_amount + "）";
+    if (json) {
+      if (docType === "receipt") {
+        const check = validateReceipt(json);
+        if (!check.ok) {
+          warn.textContent = "⚠ 合計金額が一致しません（計算値: " + check.calcTotal + " / JSON: " + json.total_amount + "）";
+        }
       }
+      resultBox.innerHTML = highlightJson(JSON.stringify(json, null, 2));
+    } else {
+      resultBox.textContent = "JSON を抽出できませんでした。\n\n" + text;
     }
-    resultBox.innerHTML = highlightJson(JSON.stringify(json, null, 2));
-  } else {
-    resultBox.textContent = "JSON を抽出できませんでした。\n\n" + text;
+
+    // --- 自動保存の実行 (完全同期) ---
+    const list = JSON.parse(localStorage.getItem("ocrData") || "[]");
+    const id = Date.now().toString();
+    const finalRaw = json ? JSON.stringify(json, null, 2) : text;
+    
+    list.push({ 
+      id, 
+      type: docType, 
+      json: json || null, 
+      raw: finalRaw, 
+      time: Date.now(), 
+      image: thumbBase64 || null 
+    });
+
+    try {
+      localStorage.setItem("ocrData", JSON.stringify(list));
+      alert("✅ データ一覧に自動保存しました。");
+    } catch (storageError) {
+      console.error("容量限界エラー対応:", storageError);
+      alert("ブラウザの保存容量制限を回避するため、画像を省いてテキストのみ自動保存しました。古いデータを削除してください。");
+      list[list.length - 1].image = null;
+      localStorage.setItem("ocrData", JSON.stringify(list));
+    }
+
+  } catch (ocrError) {
+    document.getElementById("resultBox").innerText = "エラーが発生しました:\n" + ocrError.message;
   }
 };
 
@@ -436,29 +611,21 @@ function buildReceiptPrompt() {
   "total_check": true
 }
 
-【抽出ルール】
-- store_name: レシートに記載のブランド名と店名を結合した文字列（例："フレンドマート 米原駅前店"）
-- registration_number: "T"から始まる13桁の登録番号。ハイフン等は不要です。
-- 店名は正式名称に正規化（例：セブンイレブン → Seven-Eleven）
+【最重要：金額計算・消費税ルール（絶対に間違えないこと）】
+- レシートには「内税（税込価格の合計と、そのうちの消費税額が内訳として記載されているもの）」と「外税（税別価格の合計に、別途消費税が加算されているもの）」の2つのパターンが混在します。これらを絶対に混同しないでください。
+- 各商品の単価(unit_price)は、レシートに記載されているそのままの数値を抽出してください。値引き(discount)がある場合は正の数で記入。
+- 各商品の小計(subtotal)は、AIが必ず「(数量 × 単価) − 値引き」を計算して数値を算出してください。
+- tax_amount（消費税額）には、レシートに明記されている「消費税額」または「軽税外・標準税等に対応する税額の合計」を正確に抽出して数値で入れてください。
+- total_amount（合計金額）には、最終的に支払った「税込の総合計金額」を正確に抽出してください。
+
+【その他の抽出ルール】
+- store_name: レシートに記載の店舗名やブランド名（正式な長い会社名は不要、店舗固有の呼び名を優先）
+- registration_number: "T"から始まる13桁の登録番号。ハイフン等は不要です。見つけたら全角・半角問わず抽出してください。
 - 日付は YYYY-MM-DD 形式に統一
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
-【金額計算ルール（必ず守ること）】
-- discount は「値引き額」を正の数で記入する（例：100円引きなら 100）
-- subtotal は値引き額を反映させて必ず AI が計算して数値を入れること
-- subtotal = (qty × unit_price) − discount を必ず実行すること
-- subtotal を空欄にしてはいけない
-
 【カテゴリ分類ルール】
-以下の分類を参考に最も適切なカテゴリとサブカテゴリを推定して記入してください。
-■ 食品 (生鮮 / 加工 / 飲料)
-■ 日用品 (洗剤 / 紙類 / 雑貨)
-■ 外食 (ファストフード / レストラン)
-■ その他の分類 (ガソリン / 医療・薬 / 交通 / 娯楽 / 衣類 / 住居 / その他)
-
-【注意】
-- JSON 以外の文章は絶対に書かない
-- 読み取れない場合は空欄にする
+■ 食品 (生鮮 / 加工 / 飲料) ■ 日用品 (洗剤 / 紙類 / 雑貨) ■ 外食 (ファストフード / レストラン) ■ その他の分類 (ガソリン / 医療・薬 / 交通 / 娯楽 / 衣類 / 住居 / その他)
 `;
 }
 function buildBusinessCardPrompt() { return `これは名刺の画像です。以下の JSON だけを返してください。\n\n{\n  "type": "business_card",\n  "name": "",\n  "company": "",\n  "title": "",\n  "phone": "",\n  "email": "",\n  "address": ""\n}\n\nJSON 以外の文章は書かないでください。`; }
@@ -470,6 +637,7 @@ async function callGeminiOCR(base64, apiKey, docType) {
   const prompt = buildPrompt(docType);
   const body = { contents: [{ parts: [ { text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(",")[1] } } ] }] };
   const res = await fetch(url, { method: "POST", body: JSON.stringify(body) });
+  if (!res.ok) throw new Error("Gemini APIエラー: " + res.statusText);
   const data = await res.json();
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
 }
@@ -493,26 +661,255 @@ function validateReceipt(json) {
   return { ok: json.total_check, calcTotal };
 }
 
-document.getElementById("saveBtn").onclick = () => {
-  const text = document.getElementById("resultBox").innerText;
-  if (!text.trim() || text.includes("読取中...") || text.includes("取得中...")) return;
-  const docType = document.getElementById("docType").value;
-  const list = JSON.parse(localStorage.getItem("ocrData") || "[]");
-  const id = Date.now().toString();
-  
-  const finalRaw = lastParsedJson ? JSON.stringify(lastParsedJson, null, 2) : text;
-  
-  list.push({ id, type: docType, json: lastParsedJson || null, raw: finalRaw, time: Date.now(), image: lastImageDataUrl || null });
- 
-  localStorage.setItem("ocrData", JSON.stringify(list));
-  alert("保存しました");
+// ==================== 📂 データ一覧画面のコントロール ====================
+function loadData() {
+  dataList = JSON.parse(localStorage.getItem("ocrData") || "[]");
+  renderList();
+}
+
+function renderList() {
+  const container = document.getElementById("listContainer");
+  container.innerHTML = "";
+
+  const typeFilter = document.getElementById("filterType").value;
+  const keyword = document.getElementById("searchText").value.trim();
+
+  const filtered = dataList.filter(item => {
+    if (typeFilter && item.type !== typeFilter) return false;
+    const text = (item.raw || "") + " " + JSON.stringify(item.json || {});
+    if (keyword && !text.toLowerCase().includes(keyword.toLowerCase())) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = "<div style='text-align:center; padding: 40px 20px; color: #8e8e93;'><span style='font-size:32px; display:block; margin-bottom:12px;'>📭</span>保存されたデータがありません</div>";
+    return;
+  }
+
+  filtered.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "list-card";
+
+    const header = document.createElement("div");
+    header.className = "list-card-header";
+    
+    let typeText = item.type;
+    if(item.type === "receipt") typeText = "🧾 レシート";
+    if(item.type === "business_card") typeText = "📇 名刺";
+    if(item.type === "license_plate") typeText = "🚗 ナンバー";
+    
+    header.innerHTML = `
+      <span class="badge ${item.type}">${typeText}</span>
+      <span class="time-text">${new Date(item.time).toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
+    `;
+    card.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "list-card-body";
+
+    if (item.image && item.image.startsWith("data:image")) {
+      const img = document.createElement("img");
+      img.src = item.image;
+      img.className = "thumb";
+      img.onclick = () => openImageModal(item.image);
+      body.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "thumb";
+      ph.style.display = "flex"; ph.style.alignItems = "center"; ph.style.justifyContent = "center"; ph.style.background = "#f2f2f7"; ph.style.fontSize = "11px"; ph.style.color = "#8e8e93"; ph.textContent = "画像なし";
+      body.appendChild(ph);
+    }
+
+    const summaryDiv = document.createElement("div");
+    summaryDiv.className = "summary-text";
+
+    if (item.type === "receipt" && item.json) {
+      let displayName = "";
+      const official = item.json.official_company_name;
+      const store = item.json.store_name;
+
+      if (official && store) {
+        displayName = `${official}（${store}）`;
+      } else {
+        displayName = official || store || "(店名不明)";
+      }
+      summaryDiv.innerHTML = `<div class="summary-title">${displayName}</div><div class="summary-sub">合計: ¥${item.json.total_amount || 0}</div>`;
+    } else if (item.type === "business_card" && item.json) {
+      summaryDiv.innerHTML = `<div class="summary-title">${item.json.company || "(会社不明)"}</div><div class="summary-sub">${item.json.name || "(氏名不明)"}</div>`;
+    } else if (item.type === "license_plate" && item.json) {
+      summaryDiv.innerHTML = `<div class="summary-title">${item.json.region || ""} ${item.json.class_number || ""}</div><div class="summary-sub">${item.json.hiragana || ""} ${item.json.number || ""}</div>`;
+    } else {
+      summaryDiv.textContent = (item.raw || "").slice(0, 40) + "...";
+    }
+    body.appendChild(summaryDiv);
+    card.appendChild(body);
+
+    const actions = document.createElement("div");
+    actions.className = "list-card-actions";
+    
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn-outline";
+    editBtn.textContent = "✏️ 編集";
+    editBtn.onclick = () => openJsonEditor(item);
+    
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-danger";
+    delBtn.textContent = "🗑 削除";
+    delBtn.onclick = () => {
+      if (!confirm("このデータを削除しますか？")) return;
+      dataList = dataList.filter(d => d.id !== item.id);
+      localStorage.setItem("ocrData", JSON.stringify(dataList));
+      loadData();
+    };
+    
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+    card.appendChild(actions);
+
+    container.appendChild(card);
+  });
+}
+
+document.getElementById("filterType").onchange = renderList;
+document.getElementById("searchText").oninput = renderList;
+
+function openImageModal(src) {
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("modalImage");
+  img.src = src;
+  modal.style.display = "flex";
+}
+document.getElementById("imageModal").onclick = () => {
+  document.getElementById("imageModal").style.display = "none";
 };
 
+/* インラインデータ編集機能 */
+function openJsonEditor(item) {
+  const container = document.getElementById("listContainer");
+  const editorWrapper = document.createElement("div");
+  editorWrapper.className = "list-card";
+  
+  editorWrapper.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:15px;font-weight:700;">⚙️ データ編集</div>
+      <button id="closeEditorBtn" style="width:auto; padding:6px 12px; background:#e5e5ea; border-radius:8px;">閉じる</button>
+    </div>
+    <textarea id="jsonEditorArea" class="json-editor"></textarea>
+    <div id="editorWarning" style="color:#ff3b30;font-size:12px;margin:8px 0;font-weight:500;"></div>
+    <button id="recalcBtn" class="btn-primary" style="margin-bottom:0;">💾 再計算して保存</button>
+  `;
+
+  container.innerHTML = "";
+  container.appendChild(editorWrapper);
+
+  const area = document.getElementById("jsonEditorArea");
+  area.value = item.json ? JSON.stringify(item.json, null, 2) : (item.raw || "");
+
+  document.getElementById("closeEditorBtn").onclick = () => renderList();
+
+  document.getElementById("recalcBtn").onclick = () => {
+    const warn = document.getElementById("editorWarning");
+    warn.textContent = "";
+    let obj;
+    try {
+      obj = JSON.parse(area.value);
+    } catch (e) {
+      warn.textContent = "⚠ JSON の形式が正しくありません: " + e.message;
+      return;
+    }
+
+    if (item.type === "receipt") {
+      const check = validateReceipt(obj);
+      if (!check.ok) {
+        warn.textContent = "⚠ 合計金額が一致しません（計算値: " + check.calcTotal + " / JSON: " + obj.total_amount + "）";
+      } else {
+        warn.textContent = "✅ 合計金額は一致しています。";
+      }
+    }
+    item.json = obj;
+    item.raw = JSON.stringify(obj, null, 2);
+    localStorage.setItem("ocrData", JSON.stringify(dataList));
+    setTimeout(() => { alert("変更を保存しました"); renderList(); }, 100);
+  };
+}
+
+/* Excelデータ出力機能 */
+document.getElementById("excelBtn").onclick = () => {
+  if (dataList.length === 0) { alert("データがありません"); return; }
+  const rowsKakeibo = []; 
+  const rowsReceipts = [];
+  
+  dataList.forEach(item => {
+    if (item.type !== "receipt" || !item.json) return;
+    const r = item.json;
+    validateReceipt(r); 
+    
+    const date = r.date || ""; 
+    const tNum = r.registration_number || "";
+    const officialName = r.official_company_name || "";
+    const storeRaw = r.store_name || "";
+    
+    let formattedStore = storeRaw;
+    if (officialName && storeRaw) {
+        formattedStore = `${officialName}（${storeRaw}）`;
+    } else {
+        formattedStore = officialName || storeRaw || "";
+    }
+
+    const pay = r.payment_method || ""; 
+    const total = r.total_amount || 0; 
+    const subtotal = r.subtotal_amount || 0; 
+    const tax = r.tax_amount || 0;
+    const rate = subtotal > 0 ? Math.round((tax / subtotal) * 1000) / 10 : "";
+    
+    const items = Array.isArray(r.items) ? r.items : [];
+    items.forEach(it => { 
+      rowsKakeibo.push({ 
+        日付: date, 
+        店名: formattedStore, 
+        カテゴリ: it.category || "", 
+        サブカテゴリ: it.subcategory || "", 
+        品名: it.name || "", 
+        数量: it.qty || 0, 
+        単価: it.unit_price || 0, 
+        小計: it.subtotal || 0, 
+        支払い方法: pay, 
+        合計金額: total, 
+        メモ: "" 
+      }); 
+    });
+    
+    rowsReceipts.push({ 
+      日付: date, 
+      店名: formattedStore, 
+      正式社名: officialName, 
+      登録番号: tNum, 
+      支払い方法: pay, 
+      小計: subtotal, 
+      税額: tax, 
+      税率_推定: rate, 
+      合計金額: total, 
+      合計チェック: r.total_check ? "OK" : "NG" 
+    });
+  });
+
+  if (rowsKakeibo.length === 0) { alert("レシートの有効なデータがありません"); return; }
+  
+  const wb = XLSX.utils.book_new();
+  const wsK = XLSX.utils.json_to_sheet(rowsKakeibo); 
+  XLSX.utils.book_append_sheet(wb, wsK, "家計簿");
+  
+  const wsR = XLSX.utils.json_to_sheet(rowsReceipts); 
+  XLSX.utils.book_append_sheet(wb, wsR, "レシート");
+  
+  XLSX.writeFile(wb, "kakeibo_receipts.xlsx");
+};
+
+/* ZIP 一括保存機能 */
 document.getElementById("zipBtn").onclick = async () => {
-  const list = JSON.parse(localStorage.getItem("ocrData") || "[]");
-  if (list.length === 0) { alert("保存データがありません"); return; }
+  if (dataList.length === 0) { alert("保存されたデータがありません"); return; }
   const zip = new JSZip();
-  list.forEach((item, idx) => {
+  dataList.forEach((item, idx) => {
     const baseName = `${idx + 1}_${item.type}_${item.id}`;
     const folder = zip.folder(baseName);
     folder.file("data.txt", item.raw || "");
@@ -524,6 +921,12 @@ document.getElementById("zipBtn").onclick = async () => {
   a.href = URL.createObjectURL(blob);
   a.download = "ocr_data.zip";
   a.click();
+};
+
+document.getElementById("clearBtn").onclick = () => {
+  if (!confirm("すべてのデータを完全に削除しますか？")) return;
+  localStorage.removeItem("ocrData");
+  loadData();
 };
 </script>
 </body>
