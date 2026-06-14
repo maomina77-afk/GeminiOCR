@@ -461,7 +461,7 @@ async function fetchExcelApiCompanyName(tNumberRaw) {
   const numOnly = half.replace(/[^0-9]/g, '');
   if (numOnly.length !== 13) return null;
 
-  const normalizedT = "T" + numOnly;
+  const normalizedT =numOnly;
 
   try {
     const targetUrl = `https://api.excelapi.org/company/invoice_name?id=${normalizedT}`;
