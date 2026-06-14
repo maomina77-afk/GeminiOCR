@@ -461,7 +461,7 @@ async function fetchExcelApiCompanyName(tNumberRaw) {
   const numOnly = half.replace(/[^0-9]/g, '');
   if (numOnly.length !== 13) return null;
 
-  const normalizedT = "T" + numOnly;
+  const normalizedT = numOnly;
 
   try {
     const targetUrl = `https://api.excelapi.org/company/invoice_name?id=${normalizedT}`;
@@ -528,6 +528,8 @@ document.getElementById("cropOkBtn").onclick = async () => {
       
       let officialName = await fetchExcelApiCompanyName(json.registration_number);
       
+       document.getElementById("resultBox").innerText = officialName;
+       
       if (!officialName) {
         document.getElementById("resultBox").innerText = "Excel APIで見つからないため、国税庁APIから取得中...";
         officialName = await fetchOfficialCompanyName(json.registration_number);
