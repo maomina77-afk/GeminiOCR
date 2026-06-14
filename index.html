@@ -486,6 +486,33 @@ async function fetchExcelApiCompanyName(tNumberRaw) {
   }
   return null;
 }
+
+async function fetchOfficialCompanyName(tNumberRaw) {
+  const apiKey = localStorage.getItem("ntaApiKey");
+  if (!apiKey) return null;
+
+  if (!tNumberRaw) return null;
+  const half = toHalfWidth(tNumberRaw);
+  const numOnly = half.replace(/[^0-9]/g, '');
+  if (numOnly.length !== 13) return null;
+
+  try {
+    const targetUrl = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${numOnly}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&disableCache=true`;
+    
+    const response = await fetch(proxyUrl);
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.announcement && data.announcement.length > 0) {
+        return data.announcement[0].name;
+      }
+    }
+  } catch (error) { 
+    console.error("国税庁API通信エラー:", error); 
+  }
+  return null;
+}
+
 // ---------- トリミング決定・OCR解析・自動保存 ----------
 document.getElementById("cropOkBtn").onclick = async () => {
   if (!cropper) return;
