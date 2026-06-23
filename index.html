@@ -616,12 +616,13 @@ function buildReceiptPrompt() {
   ],
   "subtotal_amount": 0,
   "tax_amount": 0,
+ 　"tax_inclusive": true,
   "total_amount": 0,
   "total_check": true
 }
 
 【最重要：金額計算・消費税ルール（絶対に間違えないこと）】
-- レシートには「内税（税込価格の合計と、そのうちの消費税額が内訳として記載されているもの）」と「外税（税別価格の合計に、別途消費税が加算されているもの）」の2つのパターンが混在します。これらを絶対に混同しないでください。
+- レシートには「内消費税（税込価格の合計と、そのうちの消費税額が内訳として記載されているもの）」と「外消費税（税別価格の合計に、別途消費税が加算されているもの）」の2つのパターンが混在します。これらを絶対に混同しないでください。
 - 各商品の単価(unit_price)は、レシートに記載されているそのままの数値を抽出してください。値引き(discount)がある場合は正の数で記入。
 - 各商品の小計(subtotal)は、AIが必ず「(数量 × 単価) − 値引き」を計算して数値を算出してください。
 - tax_amount（消費税額）には、レシートに明記されている「消費税額」または「軽税外・標準税等に対応する税額の合計」を正確に抽出して数値で入れてください。
@@ -666,8 +667,20 @@ function validateReceipt(json) {
     subtotal += sub; 
   });
   json.subtotal_amount = subtotal;
-  const tax = Number(json.tax_amount || 0); const total = Number(json.total_amount || 0); const calcTotal = subtotal + tax; json.total_check = (calcTotal === total);
-  return { ok: json.total_check, calcTotal };
+ const tax = Number(json.tax_amount || 0);
+const total = Number(json.total_amount || 0);
+
+// boolean でも文字列でも対応
+const taxInclusive =
+  json.tax_inclusive === true ||
+  json.tax_inclusive === "true" ||
+  json.tax_inclusive === 1;
+
+const calcTotal = taxInclusive ? subtotal : subtotal + tax;
+
+json.total_check = (calcTotal === total);
+
+return { ok: json.total_check, calcTotal };
 }
 
 // ==================== 📂 データ一覧画面のコントロール ====================
