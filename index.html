@@ -445,23 +445,28 @@ function createThumbnail(canvas, maxWidth = 200) {
 }
 
 function toHalfWidth(str) {
+  if (!str) return "";
   return str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
       return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
   });
 }
 
-// ---------- 国税庁API連携 (CORSプロキシ対応) ----------
+// ---------- 国税庁API連携 (原因特定ロジック追加) ----------
 async function fetchOfficialCompanyName(tNumberRaw) {
   const apiKey = localStorage.getItem("ntaApiKey");
   if (!apiKey) {
-    console.warn("国税庁APIキーが設定されていません。");
-    return null;
+    return { success: false, reason: "初期設定ページで国税庁APIキーが設定されていません。" };
   }
 
-  if (!tNumberRaw) return null;
+  if (!tNumberRaw) {
+    return { success: false, reason: "レシート画像から登録番号（T番号）が検出されませんでした。" };
+  }
+
   const half = toHalfWidth(tNumberRaw);
   const numOnly = half.replace(/[^0-9]/g, '');
-  if (numOnly.length !== 13) return null;
+  if (numOnly.length !== 13) {
+    return { success: false, reason: `検出された番号（${numOnly}）が有効な13桁ではありません。` };
+  }
 
   try {
     const targetUrl = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${numOnly}`;
@@ -469,21 +474,25 @@ async function fetchOfficialCompanyName(tNumberRaw) {
     
     const response = await fetch(proxyUrl);
     if (response.ok) {
-      const text = await response.text(); // JSONパースエラー対策として一度テキストで取得
+      const text = await response.text();
       try {
         const data = JSON.parse(text);
         if (data && data.announcement && data.announcement.length > 0) {
-          // 法人名または氏名を返す
-          return data.announcement[0].name;
+          return { success: true, name: data.announcement[0].name };
+        } else if (data && data.code) {
+          return { success: false, reason: `国税庁APIエラー（コード: ${data.code}）APIキーが不正な可能性があります。` };
+        } else {
+          return { success: false, reason: "国税庁のデータベースに対象の登録番号が見つかりませんでした。" };
         }
       } catch (parseError) {
-        console.error("JSONパースエラー:", parseError, text);
+        return { success: false, reason: `API応答データが不正なJSON形式です。プロキシ制限等の可能性があります。内容: ${text.slice(0, 40)}` };
       }
+    } else {
+      return { success: false, reason: `CORSプロキシ通信エラー（ステータス: ${response.status}）` };
     }
   } catch (error) { 
-    console.error("国税庁API通信エラー:", error); 
+    return { success: false, reason: `ネットワークエラー（接続失敗またはタイムアウト）: ${error.message}` };
   }
-  return null;
 }
 
 // ---------- トリミング決定・OCR解析・自動保存 ----------
@@ -503,14 +512,16 @@ document.getElementById("cropOkBtn").onclick = async () => {
     const text = await callGeminiOCR(base64ForOCR, apiKey, docType);
     const json = extractJson(text);
 
-    // 国税庁APIへの問い合わせのみに修正
-    if (json && json.type === "receipt" && json.registration_number) {
+    // 国税庁APIへの問い合わせと原因特定
+    if (json && json.type === "receipt") {
       document.getElementById("resultBox").innerText = "読取完了。国税庁APIから正式社名を検索中...";
       
-      const officialName = await fetchOfficialCompanyName(json.registration_number);
-      
-      if (officialName) {
-        json.official_company_name = officialName;
+      const ntaResult = await fetchOfficialCompanyName(json.registration_number);
+      if (ntaResult.success) {
+        json.official_company_name = ntaResult.name;
+      } else {
+        // 取得失敗時は理由を書き込む
+        json.official_company_name = `【取得失敗】${ntaResult.reason}`;
       }
     }
 
@@ -602,7 +613,7 @@ function buildReceiptPrompt() {
 - 支払い方法は推定（例：クレジットカード / PayPay / 現金）
 
 【カテゴリ分類ルール】
-■ 食品 (生鮮 / 加工 / 飲料) ■ 日用品 (洗剤 / 紙類 / 雑貨) ■ 外食 (ファストフード / レストラン) ■ その他の分類 (ガソリン / 医療・薬 / 交通 / 娯楽 / 衣類 / 住居 / その他)
+■ 食品 (生鮮 / 加工 / 飲料) ■ 日用品 (洗剤 / 紙類 / 雑貨) ■ 外食 (ファストフード / レストラン) ■ そのその他の分類 (ガソリン / 医療・薬 / 交通 / 娯楽 / 衣類 / 住居 / その他)
 `;
 }
 function buildBusinessCardPrompt() { return `これは名刺の画像です。以下の JSON だけを返してください。\n\n{\n  "type": "business_card",\n  "name": "",\n  "company": "",\n  "title": "",\n  "phone": "",\n  "email": "",\n  "address": ""\n}\n\nJSON 以外の文章は書かないでください。`; }
@@ -634,19 +645,19 @@ function validateReceipt(json) {
     subtotal += sub; 
   });
   json.subtotal_amount = subtotal;
- const tax = Number(json.tax_amount || 0);
-const total = Number(json.total_amount || 0);
+  const tax = Number(json.tax_amount || 0);
+  const total = Number(json.total_amount || 0);
 
-const taxInclusive =
-  json.tax_inclusive === true ||
-  json.tax_inclusive === "true" ||
-  json.tax_inclusive === 1;
+  const taxInclusive =
+    json.tax_inclusive === true ||
+    json.tax_inclusive === "true" ||
+    json.tax_inclusive === 1;
 
-const calcTotal = taxInclusive ? subtotal : subtotal + tax;
+  const calcTotal = taxInclusive ? subtotal : subtotal + tax;
 
-json.total_check = (calcTotal === total);
+  json.total_check = (calcTotal === total);
 
-return { ok: json.total_check, calcTotal };
+  return { ok: json.total_check, calcTotal };
 }
 
 // ==================== 📂 データ一覧画面のコントロール ====================
@@ -716,7 +727,8 @@ function renderList() {
       const official = item.json.official_company_name;
       const store = item.json.store_name;
 
-      if (official && store) {
+      // エラー文字列が含まれていない正常な正式社名がある場合
+      if (official && !official.includes("【取得失敗】") && store) {
         displayName = `${official}（${store}）`;
       } else {
         displayName = official || store || "(店名不明)";
@@ -834,7 +846,11 @@ document.getElementById("excelBtn").onclick = () => {
     
     const date = r.date || ""; 
     const tNum = r.registration_number || "";
-    const officialName = r.official_company_name || "";
+    let officialName = r.official_company_name || "";
+    // エラー文字列はExcel出力時に除外または空白化する
+    if (officialName.includes("【取得失敗】")) {
+      officialName = "";
+    }
     const storeRaw = r.store_name || "";
     
     let formattedStore = storeRaw;
