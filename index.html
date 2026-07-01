@@ -457,7 +457,7 @@ function toHalfWidth(str) {
   });
 }
 
-/// ---------- 国税庁API連携の修正版 ----------
+// ---------- 国税庁API連携 (安全なJSONパース版) ----------
 async function fetchOfficialCompanyName(tNumberRaw) {
   const apiKey = localStorage.getItem("ntaApiKey");
   if (!apiKey) {
@@ -475,18 +475,23 @@ async function fetchOfficialCompanyName(tNumberRaw) {
   }
   const normalizedT = "T" + numOnly;
 
-  // ▼ 【修正ポイント】ここで try { が消えていたので追加しました ▼
   try {
-    // URLのパラメータ順序を整理
     const url = `https://red-flower-f82f.maomina77.workers.dev?id=${apiKey}&number=${normalizedT}`;
     const response = await fetch(url);
-    const data = await response.json();
     
-    // alert(data.announcement[0].name); // 実行が止まる原因になるためコメントアウトしています
+    // 💡 エラーで止まらないように、一度単なる「テキスト」として受け取る
+    const text = await response.text(); 
+    
+    let data;
+    try {
+      data = JSON.parse(text); // ここでJSONへの変換を試みる
+    } catch (parseError) {
+      // 変換失敗（HTMLが返ってきた場合など）は、ここでキャッチして原因を表示
+      return { success: false, reason: `API応答がJSON形式ではありません。内容: ${text.slice(0, 40)}...` };
+    }
 
-    // レスポンスの構造を確認
+    // 正常なJSONだった場合の処理
     if (data && data.announcement && data.announcement.length > 0) {
-      // 成功：名前を取得
       const name = data.announcement[0].name;
       if (name) {
         return { success: true, name: name };
@@ -494,8 +499,9 @@ async function fetchOfficialCompanyName(tNumberRaw) {
         return { success: false, reason: "データは存在しますが、社名情報が含まれていませんでした。" };
       }
     } else if (data && data.message && data.message.length > 0) {
-      // エラーメッセージが含まれている場合の処理
       return { success: false, reason: `APIメッセージ: ${data.message[0].message}` };
+    } else if (data && data.error) {
+      return { success: false, reason: `プロキシ内部エラー: ${data.error}` };
     } else {
       return { success: false, reason: "国税庁のデータベースに対象の登録番号が見つかりませんでした。" };
     }
@@ -503,7 +509,6 @@ async function fetchOfficialCompanyName(tNumberRaw) {
     return { success: false, reason: `ネットワーク通信エラー: ${error.message}` };
   }
 }
-
 // ---------- トリミング決定・OCR解析・自動保存 ----------
 document.getElementById("cropOkBtn").onclick = async () => {
   if (!cropper) return;
