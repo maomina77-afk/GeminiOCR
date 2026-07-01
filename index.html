@@ -477,15 +477,12 @@ async function fetchOfficialCompanyName(tNumberRaw) {
 
   try {
     // URLのパラメータ順序を整理
-    const targetUrl = `https://web-api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&number=${normalizedT}&type=21&history=0`;
     
-    const response = await fetch(targetUrl);
-    const text = await response.text();
-    
-    // JSONのパースを試みる
-    let data;
-    try {
-      data = JSON.parse(text);
+    const url = `https://red-flower-f82f.maomina77.workers.dev?id=${apiKey}&number=${normalizedT}`;
+const response = await fetch(url);
+const data = await response.json();
+alert(data.announcement[0].name);
+
     } catch (e) {
       return { success: false, reason: "APIレスポンスの解析に失敗しました（JSON形式ではありません）。" };
     }
