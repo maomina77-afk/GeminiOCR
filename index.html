@@ -432,10 +432,10 @@ function loadImage(file) {
   reader.readAsDataURL(file);
 }
 
-function createThumbnail(canvas, maxWidth = 200) {
+function createThumbnail(canvas, maxWidth = 300) {
   return new Promise((resolve) => {
     if (canvas.width <= maxWidth) {
-      resolve(canvas.toDataURL("image/jpeg", 0.4));
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
       return;
     }
     const dstWidth = maxWidth;
@@ -446,7 +446,7 @@ function createThumbnail(canvas, maxWidth = 200) {
     thumbCanvas.height = dstHeight;
     const ctx = thumbCanvas.getContext("2d");
     ctx.drawImage(canvas, 0, 0, dstWidth, dstHeight);
-    resolve(thumbCanvas.toDataURL("image/jpeg", 0.4));
+    resolve(thumbCanvas.toDataURL("image/jpeg", 0.8));
   });
 }
 
@@ -524,7 +524,7 @@ document.getElementById("cropOkBtn").onclick = async () => {
 
   const canvas = cropper.getCroppedCanvas();
   const base64ForOCR = canvas.toDataURL("image/jpeg", 0.85); // OCR用は高精度
-  const thumbBase64 = await createThumbnail(canvas, 200);   // 保存用は軽量サムネイル
+  const thumbBase64 = await createThumbnail(canvas, 300);   // 保存用は軽量サムネイル
   
   const docType = document.getElementById("docType").value;
   document.getElementById("resultBox").innerText = "読取中...";
