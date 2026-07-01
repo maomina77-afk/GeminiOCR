@@ -457,7 +457,7 @@ function toHalfWidth(str) {
   });
 }
 
-// ---------- 国税庁API連携 (プロキシ廃止による直接通信) ----------
+/// ---------- 国税庁API連携の修正版 ----------
 async function fetchOfficialCompanyName(tNumberRaw) {
   const apiKey = localStorage.getItem("ntaApiKey");
   if (!apiKey) {
@@ -473,55 +473,42 @@ async function fetchOfficialCompanyName(tNumberRaw) {
   if (numOnly.length !== 13) {
     return { success: false, reason: `検出された番号（${numOnly}）が有効な13桁ではありません。` };
   }
-
   const normalizedT = "T" + numOnly;
 
   try {
-    const targetUrl =
-      `https://web-api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&number=${normalizedT}&type=21&history=0`;
-
+    // URLのパラメータ順序を整理
+    const targetUrl = `https://web-api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&number=${normalizedT}&type=21&history=0`;
+    
     const response = await fetch(targetUrl);
-
-    if (!response.ok) {
-      return { success: false, reason: `通信エラー（ステータス: ${response.status}）` };
-    }
-
     const text = await response.text();
-
+    
+    // JSONのパースを試みる
+    let data;
     try {
-      // 💡 国税庁APIは BOM（\uFEFF）を返すことがあるため除去
-      const cleanText = text.replace(/^\uFEFF/, '');
-
-      const data = JSON.parse(cleanText);
-
-      if (data?.announcement?.length > 0) {
-        return { success: true, name: data.announcement[0].name };
-      }
-
-      if (data?.code) {
-        return {
-          success: false,
-          reason: `国税庁APIエラー（コード: ${data.code}）APIキーが不正な可能性があります。`
-        };
-      }
-
-      return { success: false, reason: "国税庁のデータベースに対象の登録番号が見つかりませんでした。" };
-
-    } catch (parseError) {
-      return {
-        success: false,
-        reason: `API応答データが不正なJSON形式です。内容: ${text.slice(0, 80)}`
-      };
+      data = JSON.parse(text);
+    } catch (e) {
+      return { success: false, reason: "APIレスポンスの解析に失敗しました（JSON形式ではありません）。" };
     }
 
-  } catch (error) {
-    return {
-      success: false,
-      reason: `ネットワーク通信エラー（直接接続失敗・CORSエラー等）: ${error.message}`
-    };
+    // レスポンスの構造を確認
+    if (data && data.announcement && data.announcement.length > 0) {
+      // 成功：名前を取得
+      const name = data.announcement[0].name;
+      if (name) {
+        return { success: true, name: name };
+      } else {
+        return { success: false, reason: "データは存在しますが、社名情報が含まれていませんでした。" };
+      }
+    } else if (data && data.message && data.message.length > 0) {
+      // エラーメッセージが含まれている場合の処理
+      return { success: false, reason: `APIメッセージ: ${data.message[0].message}` };
+    } else {
+      return { success: false, reason: "国税庁のデータベースに対象の登録番号が見つかりませんでした。" };
+    }
+  } catch (error) { 
+    return { success: false, reason: `ネットワーク通信エラー: ${error.message}` };
   }
 }
-
 
 // ---------- トリミング決定・OCR解析・自動保存 ----------
 document.getElementById("cropOkBtn").onclick = async () => {
