@@ -239,7 +239,7 @@ details[open] summary { margin-bottom: 16px; }
 </style>
 </head>
 <body>
-<header id="headerTitle">OCR CaptureV1.03</header>
+<header id="headerTitle">OCR CaptureV1.04</header>
 
 <div class="main">
   
@@ -475,7 +475,6 @@ async function fetchOfficialCompanyName(tNumberRaw) {
   }
   const normalizedT = "T" + numOnly;
 
-  try {
     // URLのパラメータ順序を整理
     
     const url = `https://red-flower-f82f.maomina77.workers.dev?id=${apiKey}&number=${normalizedT}`;
@@ -483,9 +482,7 @@ const response = await fetch(url);
 const data = await response.json();
 alert(data.announcement[0].name);
 
-    } catch (e) {
-      return { success: false, reason: "APIレスポンスの解析に失敗しました（JSON形式ではありません）。" };
-    }
+
 
     // レスポンスの構造を確認
     if (data && data.announcement && data.announcement.length > 0) {
