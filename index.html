@@ -476,7 +476,7 @@ async function fetchOfficialCompanyName(tNumberRaw) {
   const normalizedT = "T" + numOnly;
   try {
     // 💡 プロキシを廃止し、国税庁APIの直接URLに変更
-    const targetUrl = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${normalizedT}`;
+    const targetUrl = `https://web-api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&number=${normalizedT}&type=21&history=0`;
     
     const response = await fetch(targetUrl);
     if (response.ok) {
