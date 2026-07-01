@@ -92,11 +92,16 @@ button, .btn-label {
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  transition: transform 0.1s, opacity 0.2s;
+  transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
   margin-bottom: 12px;
 }
 button:active, .btn-label:active {
   transform: scale(0.98);
+}
+button:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+  transform: none;
 }
 .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(0, 122, 255, 0.3); }
 .btn-outline { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
@@ -234,7 +239,7 @@ details[open] summary { margin-bottom: 16px; }
 </style>
 </head>
 <body>
-<header id="headerTitle">OCR Capture</header>
+<header id="headerTitle">OCR CaptureV1.01</header>
 
 <div class="main">
   
@@ -251,6 +256,7 @@ details[open] summary { margin-bottom: 16px; }
         <label>国税庁API キー</label>
         <input type="password" id="ntaApiKey" placeholder="APIキーを入力" autocomplete="off">
         <button class="btn-outline-gray" id="saveNtaApiKeyBtn">国税庁APIキーを保存</button>
+        <p style="font-size:11px; color:#8e8e93; margin-top:8px; line-height:1.4;">このサービスは、国税庁のWeb-API機能を利用して取得した情報をもとに作成しているが、サービスの内容は国税庁によって保証されたものではない</p>
       </div>
     </details>
 
@@ -451,7 +457,7 @@ function toHalfWidth(str) {
   });
 }
 
-// ---------- 国税庁API連携 (原因特定ロジック追加) ----------
+// ---------- 国税庁API連携 (プロキシ廃止による直接通信) ----------
 async function fetchOfficialCompanyName(tNumberRaw) {
   const apiKey = localStorage.getItem("ntaApiKey");
   if (!apiKey) {
@@ -469,10 +475,10 @@ async function fetchOfficialCompanyName(tNumberRaw) {
   }
   const normalizedT = "T" + numOnly;
   try {
+    // 💡 プロキシを廃止し、国税庁APIの直接URLに変更
     const targetUrl = `https://api.invoice-kohyo.nta.go.jp/1/num?id=${apiKey}&type=21&history=0&number=${normalizedT}`;
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&disableCache=true`;
     
-    const response = await fetch(proxyUrl);
+    const response = await fetch(targetUrl);
     if (response.ok) {
       const text = await response.text();
       try {
@@ -485,13 +491,13 @@ async function fetchOfficialCompanyName(tNumberRaw) {
           return { success: false, reason: "国税庁のデータベースに対象の登録番号が見つかりませんでした。" };
         }
       } catch (parseError) {
-        return { success: false, reason: `API応答データが不正なJSON形式です。プロキシ制限等の可能性があります。内容: ${text.slice(0, 40)}` };
+        return { success: false, reason: `API応答データが不正なJSON形式です。内容: ${text.slice(0, 40)}` };
       }
     } else {
-      return { success: false, reason: `CORSプロキシ通信エラー（ステータス: ${response.status}）` };
+      return { success: false, reason: `通信エラー（ステータス: ${response.status}）` };
     }
   } catch (error) { 
-    return { success: false, reason: `ネットワークエラー（接続失敗またはタイムアウト）: ${error.message}` };
+    return { success: false, reason: `ネットワーク通信エラー（直接接続失敗・CORSエラー等）: ${error.message}` };
   }
 }
 
@@ -501,6 +507,13 @@ document.getElementById("cropOkBtn").onclick = async () => {
   const apiKey = getApiKey();
   if (!apiKey) { alert("先に Gemini APIキー を入力・保存してください。"); return; }
   
+  // 💡 実行ボタンのUI変更（処理中のフィードバック）
+  const btn = document.getElementById("cropOkBtn");
+  const originalBtnText = btn.textContent;
+  btn.textContent = "⏳ 処理中...";
+  btn.style.backgroundColor = "#ff9500"; // 処理中はオレンジ色に
+  btn.disabled = true;
+
   const canvas = cropper.getCroppedCanvas();
   const base64ForOCR = canvas.toDataURL("image/jpeg", 0.85); // OCR用は高精度
   const thumbBase64 = await createThumbnail(canvas, 200);   // 保存用は軽量サムネイル
@@ -568,6 +581,11 @@ document.getElementById("cropOkBtn").onclick = async () => {
 
   } catch (ocrError) {
     document.getElementById("resultBox").innerText = "エラーが発生しました:\n" + ocrError.message;
+  } finally {
+    // 💡 実行ボタンのUIを元の状態に戻す
+    btn.textContent = originalBtnText;
+    btn.style.backgroundColor = ""; // CSSのクラス設定に戻す
+    btn.disabled = false;
   }
 };
 
